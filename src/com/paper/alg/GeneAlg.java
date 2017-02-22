@@ -2,10 +2,7 @@ package com.paper.alg;
 
 import java.io.BufferedReader;
 import java.io.File;
-import java.io.FileInputStream;
-import java.io.FileNotFoundException;
 import java.io.FileReader;
-import java.io.InputStreamReader;
 import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.Iterator;
@@ -21,10 +18,20 @@ public class GeneAlg {
 		geneAlg.run();
 	}
 	
+	/**
+	 * 容错：只考虑一次就恢复成功的情况，不考虑嵌套错误恢复
+	 */
+	
 	private static final int COMPONENTNUM = 7;	//组件个数，即染色体中的值的个数
 	private static final double WEIGHT = 0.5;	//线性加权的权重
 	
 	Map<Integer, Component> componentMap = new HashMap<>();
+	
+	//本代的染色体种群
+	List<Strategy> strategyList = new ArrayList<>();
+	
+	//迭代一次后形成的新的染色体种群
+	List<Strategy> newStrategyList = new ArrayList<>();	
 	
 	/**
 	 * 遗传算法运行入口
@@ -43,35 +50,101 @@ public class GeneAlg {
 		initComponentInfo(componentMap);
 		
 		//随机产生一组GenSize条染色体
-		List<Strategy> strategyList = new ArrayList<>();
 		initStrategyPopulation(GenSize, strategyList);
 		
-		//迭代一次后形成的新的染色体集合
-		List<Strategy> newStrategyList = new ArrayList<>();	
 		
-		Strategy bestStrategy = new Strategy();
+		Strategy globalBestStrategy = new Strategy();
 		
 		//开始迭代
 		int iter = 1;
 		while(iter < maxIter) {
+			//本代染色体中最优的卸载策略
+			Strategy localBestStrategy = new Strategy();
 			
 			//计算每个卸载策略的适应度
-			calAllChromosomeFitness(strategyList);
+			double allChromosomeFitness = calAllChromosomeFitness(strategyList);
 			
-			//本代最优，与全局最优进行比较
+			localBestStrategy = selectMinFitnessChromosome(strategyList);
 			
-			//比较当前最优策略和全局最优策略
+			//本代最优，与全局最优进行比较:若本代中的染色体比全局最优的染色体的适应度更小，则更新全局染色体
+			if (localBestStrategy.getFitness() < globalBestStrategy.getFitness()) {
+				globalBestStrategy = localBestStrategy;
+			}
 			
+			//计算每条染色体被选中的概率和累计概率
+			calChromosomeProbability(strategyList, allChromosomeFitness);
 			
+			//选择运算
 			select();
+			
+			//交叉运算
 			crossover(null, null);
+			
+			//变异运算
 			mutation(null);
+			
+			//产生新的染色体种群newStrategyList
+			
+			strategyList = newStrategyList;
 			
 			iter++;
 		}
 	}
 	
+	/**
+	 * 选择适应度最小的染色体
+	 * @param strategyList
+	 * @return
+	 */
+	private Strategy selectMinFitnessChromosome(List<Strategy> strategyList) {
+		Strategy minFitnessStrategy = new Strategy();
+		Iterator<Strategy> iter = strategyList.iterator();
+		while(iter.hasNext()) {
+			Strategy s = iter.next();
+			//适应度更小，则更新minFitnessStrategy
+			if (s.getFitness() < minFitnessStrategy.getFitness()) {	
+				minFitnessStrategy = s;
+			}
+		}
+		return minFitnessStrategy;
+	}
 	
+	/**
+	 * 计算染色体被选择的概率
+	 * @param strategyList
+	 * @param allChromosomeFitness
+	 */
+	private void calChromosomeProbability(List<Strategy> strategyList, double allChromosomeFitness) {
+		for(int i = 0; i < strategyList.size(); i++) {
+			Strategy s = strategyList.get(i);
+			
+			//每条染色体被选中的概率
+			s.probability = s.fitness / allChromosomeFitness;
+		}
+		
+		//计算每条染色体的累计概率
+		for(int i = 0; i < strategyList.size(); i++) {
+			Strategy s = strategyList.get(i);
+			s.accumulateProbability = calAccumulateProbability(s, i);
+		}
+	}
+	
+	/**
+	 * 染色体的累计概率
+	 * @param num
+	 * @return
+	 */
+	private double calAccumulateProbability(Strategy s, int sLoc) {
+		double accumulateProbability = 0;
+		int i = 0;
+		while(i <= sLoc) {
+			s.accumulateProbability += strategyList.get(i).getProbability();
+			i++;
+		}
+		return accumulateProbability;
+	}
+
+
 
 	/**
 	 * 选择运算：通过轮盘赌方法选择
@@ -124,13 +197,15 @@ public class GeneAlg {
 	}
 	
 	/**
-	 * 计算所有染色体的适应度
+	 * 计算所有染色体的适应度之和
 	 */
-	private void calAllChromosomeFitness(List<Strategy> strategyList) {
+	private double calAllChromosomeFitness(List<Strategy> strategyList) {
+		double allChromosomeFitness = 0;
 		for(int i = 0; i<strategyList.size(); i++) {
 			Strategy s = strategyList.get(i);
-			s.fitness = calChromosomeFitness(s);
+			allChromosomeFitness += calChromosomeFitness(s);
 		}
+		return allChromosomeFitness;
 	}
 	
 	/**
@@ -347,6 +422,8 @@ public class GeneAlg {
 		private double fitness;		//染色体适应度
 		
 		private double probability;		//选择的概率
+		
+		private double accumulateProbability;	//累计概率（用于轮盘赌选择）
 		
 		public Strategy() {
 			structure = new TreeMap<>();	//初始化structure结构，不然会有异常
