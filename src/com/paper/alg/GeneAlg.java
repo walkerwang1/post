@@ -3,6 +3,7 @@ package com.paper.alg;
 import java.io.BufferedReader;
 import java.io.File;
 import java.io.FileReader;
+import java.text.DecimalFormat;
 import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.Iterator;
@@ -23,7 +24,12 @@ public class GeneAlg {
 	 */
 	
 	private static final int COMPONENTNUM = 7;	//组件个数，即染色体中的值的个数
+	
 	private static final double WEIGHT = 0.5;	//线性加权的权重
+	
+	private static final double FAILURE_RECOVERY_TIME = 0;	//错误恢复时间（假设SFR阶段不出现嵌套错误）
+	
+	private static final double DISCONNECTION_TIME = 0;		//断点续传时，网络断开的时间
 	
 	Map<Integer, Component> componentMap = new HashMap<>();
 	
@@ -33,27 +39,30 @@ public class GeneAlg {
 	//迭代一次后形成的新的染色体种群
 	List<Strategy> newStrategyList = new ArrayList<>();	
 	
+	int GenSize = 50;	//种群规模
+	int maxIter = 2; 	//最大迭代次数
+	double pc = 0.9;	//交叉概率
+	double pm = 0.1; 	//变异概率
+	
 	/**
 	 * 遗传算法运行入口
 	 */
 	public void run() {
-		int GenSize = 50;	//种群规模
-		int maxIter = 100; 	//最大迭代次数
-		double pc = 0.9;	//交叉概率
-		double pm = 0.1; 	//变异概率
 		
 		//用户移动的轨迹
 		Map<String, String> trajectory = new HashMap<>();
 		
-		
 		//初始化每个组件的信息
 		initComponentInfo(componentMap);
+		printComponentInfo(componentMap);
 		
 		//随机产生一组GenSize条染色体
 		initStrategyPopulation(GenSize, strategyList);
+//		printStrategy(strategyList);
+		//生成种群后更新Component类信息
+		updateComponentMap(strategyList, componentMap);
 		
-		
-		Strategy globalBestStrategy = new Strategy();
+		Strategy globalBestStrategy = strategyList.get(0);
 		
 		//开始迭代
 		int iter = 1;
@@ -66,6 +75,7 @@ public class GeneAlg {
 			
 			localBestStrategy = selectMinFitnessChromosome(strategyList);
 			
+			
 			//本代最优，与全局最优进行比较:若本代中的染色体比全局最优的染色体的适应度更小，则更新全局染色体
 			if (localBestStrategy.getFitness() < globalBestStrategy.getFitness()) {
 				globalBestStrategy = localBestStrategy;
@@ -73,22 +83,76 @@ public class GeneAlg {
 			
 			//计算每条染色体被选中的概率和累计概率
 			calChromosomeProbability(strategyList, allChromosomeFitness);
+			printStrategy(strategyList);
 			
-			//选择运算
-			select();
+			//选择运算：选择出GenSize个优秀的染色体
+			strategyList = select(strategyList);
 			
-			//交叉运算
-			crossover(null, null);
+			/*
+			//交叉运算:通过交叉概率确定交叉运算的规模
+			int crossoverNum = (int)(strategyList.size() * pc);
+			List<Strategy> crossoverStrategyList = selectStrategyNum(strategyList, crossoverNum);
+			for(int i = 0; i < crossoverNum / 2; i++) {
+				Strategy s = crossover(strategyList.get(i), strategyList.get(i + crossoverNum / 2));
+				if (!newStrategyList.contains(s)) {
+					newStrategyList.add(s);
+				} else {
+					i--;
+				}
+			}
 			
-			//变异运算
-			mutation(null);
+			//由于交叉运算是两条父类染色体生成一条子类染色体，种群规模缩减到GenSize/2
+			int addStrategyNum = GenSize - newStrategyList.size();
+			for(int i = 0; i < addStrategyNum; i++) {
+				Strategy s = randomGenerator();
+				if (!newStrategyList.contains(s)) {
+					newStrategyList.add(s);
+				} else {
+					i--;
+				}
+			}
+			
+			//变异运算:GenSize次
+			int mutationNum = (int)(strategyList.size() * pm);
+			List<Strategy> mutationStrategyList = selectStrategyNum(strategyList, mutationNum);
+			for(int i = 0; i < mutationNum; i++) {
+				Strategy s = mutation(strategyList.get(i));
+				if (!newStrategyList.contains(s)) {
+					newStrategyList.add(s);
+				} else {
+					i--;
+				}
+			}
 			
 			//产生新的染色体种群newStrategyList
-			
 			strategyList = newStrategyList;
-			
+			*/
 			iter++;
 		}
+		
+		//输出最优的染色体信息
+		printChromosomeInfo(globalBestStrategy);
+	}
+	
+	/**
+	 * 选择一定数目的染色体进行交叉、变异运算
+	 * @param strategyList
+	 * @param selectNum
+	 * @return
+	 */
+	private List<Strategy> selectStrategyNum(List<Strategy> strategyList, int selectNum) {
+		List<Strategy> selectStrategyList = new ArrayList<>();
+		for(int i = 0; i < selectNum; i++) {
+			Random random = new Random();
+			int index = random.nextInt(50);	//产生下标0-49
+			Strategy s = strategyList.get(index);
+			if (!selectStrategyList.contains(s)) {
+				selectStrategyList.add(s);
+			} else {
+				i--;
+			}
+		}
+		return selectStrategyList;
 	}
 	
 	/**
@@ -97,13 +161,16 @@ public class GeneAlg {
 	 * @return
 	 */
 	private Strategy selectMinFitnessChromosome(List<Strategy> strategyList) {
-		Strategy minFitnessStrategy = new Strategy();
+		Strategy minFitnessStrategy = strategyList.get(0);
 		Iterator<Strategy> iter = strategyList.iterator();
 		while(iter.hasNext()) {
 			Strategy s = iter.next();
 			//适应度更小，则更新minFitnessStrategy
 			if (s.getFitness() < minFitnessStrategy.getFitness()) {	
 				minFitnessStrategy = s;
+				minFitnessStrategy.setTime(s.getTime());
+				minFitnessStrategy.setEnergy(s.getEnergy());
+				minFitnessStrategy.setFitness(s.getFitness());
 			}
 		}
 		return minFitnessStrategy;
@@ -117,15 +184,20 @@ public class GeneAlg {
 	private void calChromosomeProbability(List<Strategy> strategyList, double allChromosomeFitness) {
 		for(int i = 0; i < strategyList.size(); i++) {
 			Strategy s = strategyList.get(i);
-			
 			//每条染色体被选中的概率
 			s.probability = s.fitness / allChromosomeFitness;
+			
+			DecimalFormat df = new DecimalFormat("#.000");
+			s.probability = Double.valueOf(df.format(s.probability));
 		}
 		
 		//计算每条染色体的累计概率
 		for(int i = 0; i < strategyList.size(); i++) {
 			Strategy s = strategyList.get(i);
 			s.accumulateProbability = calAccumulateProbability(s, i);
+			
+			DecimalFormat df = new DecimalFormat("#.000");
+			s.accumulateProbability = Double.valueOf(df.format(s.accumulateProbability));
 		}
 	}
 	
@@ -144,13 +216,25 @@ public class GeneAlg {
 		return accumulateProbability;
 	}
 
-
-
 	/**
 	 * 选择运算：通过轮盘赌方法选择
 	 */
-	private void select() {
-		
+	private List<Strategy> select(List<Strategy> strategyList) {
+		List<Strategy> selectStrategyList = new ArrayList<>();
+		for(int i = 0; i < GenSize; i++) {
+			//产生0-1之间的随机数，轮盘赌中看其值落在哪个概率区间
+			Random random = new Random();
+			double probability = random.nextDouble();
+			Iterator<Strategy> iter = strategyList.iterator();
+			while(iter.hasNext()) {
+				Strategy s = iter.next();
+				if (probability < s.getAccumulateProbability()) {	//说明概率落在s上，即s被选择中
+					selectStrategyList.add(s);
+					break;	 //s已被选中，此次轮盘赌已经结束
+				}
+			}
+		}
+		return selectStrategyList;
 	}
 	
 	/**
@@ -203,7 +287,7 @@ public class GeneAlg {
 		double allChromosomeFitness = 0;
 		for(int i = 0; i<strategyList.size(); i++) {
 			Strategy s = strategyList.get(i);
-			allChromosomeFitness += calChromosomeFitness(s);
+			allChromosomeFitness += calChromosomeFitness(s, i);
 		}
 		return allChromosomeFitness;
 	}
@@ -211,7 +295,7 @@ public class GeneAlg {
 	/**
 	 * 计算一条染色体的适应度
 	 */
-	private double calChromosomeFitness(Strategy s1) {
+	private double calChromosomeFitness(Strategy s1, int loc) {
 		double chromosomeTime = 0.0;	//染色体执行时间	
 		double chromosomeEnergy = 0.0;	//染色体能耗
 		double chromosomeFitness = 0.0;		//染色体的适应度
@@ -224,6 +308,7 @@ public class GeneAlg {
 			
 			//计算染色体的能耗
 			double componentEnergy = calComponentEnergy(component, i);
+//			double componentEnergy = 0;
 			
 			chromosomeTime += componentTime;
 			chromosomeEnergy += componentEnergy;
@@ -232,6 +317,9 @@ public class GeneAlg {
 		//计算染色体的适应度的具体公式
 		chromosomeFitness = WEIGHT * chromosomeTime + (1 - WEIGHT) * chromosomeEnergy;
 		
+		strategyList.get(loc).setTime(chromosomeTime);
+		strategyList.get(loc).setEnergy(chromosomeEnergy);
+		strategyList.get(loc).setFitness(chromosomeFitness);
 		return chromosomeFitness;
 	}
 	
@@ -286,15 +374,16 @@ public class GeneAlg {
 	/**
 	 * 计算基因（组件）的执行时间 
 	 */
-	public double calComponentTime(Component component, int loc) {
+	public double calComponentTime(Component c, int loc) {
 		double componentExeTime = 0.0;
-		component = componentMap.get(loc);
+		Component component = componentMap.get(loc);
+		component.setExecLoc(c.getExecLoc());
 		if (component.getExecLoc() == 0) {	//在移动端执行
-			componentExeTime = component.getWorkload() / MobileDeviceInfo.cpu_speed;
+			componentExeTime = component.getWorkload() / MobileDeviceInfo.cpu_speed;	//1
 		} else {	//组件在云端执行
 			//组件在移动端：时间=上传时间+计算时间+下载时间+等待时间
-			componentExeTime = component.getUplinkDataSize() / 1 + component.getWorkload() / CloudServerInfo.cpu_speed +
-					component.getDownloadDataSize() / 2 + 0;
+			componentExeTime = component.getUplinkDataSize() / 10 + component.getWorkload() / CloudServerInfo.cpu_speed +
+					component.getDownloadDataSize() / 10 + component.getWaitingTime();		//3	
 		}
 		return componentExeTime;
 	}
@@ -302,18 +391,36 @@ public class GeneAlg {
 	/**
 	 * 计算组件的能耗
 	 */
-	public double calComponentEnergy(Component component, int loc) {
+	public double calComponentEnergy(Component c, int loc) {
 		double componentEnergy = 0.0;
 		double componentExeTime = 0.0;
-		component = componentMap.get(loc);
+		Component component = componentMap.get(loc);
+		component.setExecLoc(c.getExecLoc());
 		if (component.getExecLoc() == 0) {	//在移动端执行
-			componentExeTime = component.getWorkload() / MobileDeviceInfo.cpu_speed;
-			componentEnergy = componentExeTime * MobileDeviceInfo.compute_power;
+			componentExeTime = component.getWorkload() / MobileDeviceInfo.cpu_speed;	//1
+			componentEnergy = componentExeTime * MobileDeviceInfo.compute_power;	//1
 		} else {	//组件在云端执行
-			componentEnergy = (component.getUplinkDataSize() / 1) * MobileDeviceInfo.uplink_power +
-					(component.getDownloadDataSize() / 2) * MobileDeviceInfo.download_power;
+			componentEnergy = (component.getUplinkDataSize() / 10) * MobileDeviceInfo.uplink_power +
+					(component.getDownloadDataSize() / 10) * MobileDeviceInfo.download_power + 1;  	//2
 		}
 		return componentEnergy;
+	}
+	
+	/**
+	 * 更新strateList中的Map结构信息
+	 * @param strategyList
+	 * @param componentMap
+	 */
+	public void updateComponentMap(List<Strategy> strategyList, Map<Integer, Component> componentMap) {
+		for(int i = 0; i < GenSize; i++) {
+			Map<Integer, Component> map = strategyList.get(i).getStructure();
+			for(int j = 1; j <= COMPONENTNUM; j++) {
+				map.get(j).setWorkload(componentMap.get(j).getWorkload());
+				map.get(j).setUplinkDataSize(componentMap.get(j).getUplinkDataSize());
+				map.get(j).setDownloadDataSize(componentMap.get(j).getDownloadDataSize());
+				map.get(j).setWaitingTime(componentMap.get(j).getWaitingTime());
+			}
+		}
 	}
 	
 	/**
@@ -324,6 +431,7 @@ public class GeneAlg {
 		double workload = 0;
 		double uplinkDataSize = 0;
 		double downloadDataSize = 0;
+		double waitingTime = 0;
 		int count = 1;
 		
 		//从本地文件读取每个组件的信息：工作负载、上传数据大小、下载数据大小
@@ -338,17 +446,19 @@ public class GeneAlg {
 				workload = Double.valueOf(strs[0]);
 				uplinkDataSize = Double.valueOf(strs[1]);
 				downloadDataSize = Double.valueOf(strs[2]);
+				waitingTime = Double.valueOf(strs[3]);
 				
 				c.setWorkload(workload);
 				c.setUplinkDataSize(uplinkDataSize);
 				c.setDownloadDataSize(downloadDataSize);
+				c.setWaitingTime(waitingTime);
 				componentMap.put(count, c);
 				count++;
 			}
 		} catch (Exception e) {
 			e.printStackTrace();
 		}
-		
+
 	}
 	
 	/**
@@ -366,7 +476,6 @@ public class GeneAlg {
 				i--;
 			}
 		}
-//		printStrategy(strategyList);
 	}
 
 	/**
@@ -401,11 +510,68 @@ public class GeneAlg {
 			Strategy s = iter.next();
 			System.out.print("第" + count + "条染色体：");
 			for(int i = 1; i <= COMPONENTNUM; i++) {
-				System.out.print(s.getStructure().get(i).getExecLoc());
+				Component c = s.getStructure().get(i);
+				System.out.print(c.getExecLoc());
 			}
+//			System.out.print( "   时间:" + s.getTime());
+//			System.out.print( "   能耗:" + s.getEnergy());
+			System.out.print("   适应度:" + s.getFitness());
+			System.out.print("   选中概率:" + s.getProbability());
 			System.out.println();
 			count++;
 		}
+	}
+	
+	/**
+	 * 输出组件信息
+	 */
+	public void printComponentInfo(Map<Integer, Component> componentMap) {
+		System.out.println("组件的数据：负载    上传数据   下载数据   等待时间");
+		for(int i = 1; i <= componentMap.size(); i++) {
+			Component c = componentMap.get(i);
+			System.out.print(c.getWorkload() + " " + c.getUplinkDataSize() + " " +
+					c.getDownloadDataSize() + " " + c.getWaitingTime());
+			System.out.println();
+		}
+	}
+	
+	/**
+	 * 输出染色体信息
+	 */
+	public void printChromosomeInfo(Strategy globalBestStrategy) {
+		System.out.print("最优染色体策略：");
+		Map<Integer, Component> structureMap = globalBestStrategy.getStructure();
+		for(int i = 1; i <= COMPONENTNUM; i++) {
+			System.out.print(structureMap.get(i).getExecLoc());
+		}
+		System.out.println();
+		System.out.println("时间:" + globalBestStrategy.getTime());
+		System.out.println("能耗:" + globalBestStrategy.getEnergy());
+		System.out.println("适应度:" + globalBestStrategy.getFitness());
+	}
+	
+	/**
+	 * 启动容错机制
+	 * @param c	 出现网络断开的组件
+	 */
+	private void startFaultTolerance(Component c) {
+		
+	}
+	
+	/**
+	 * 用户移动位置处理
+	 */
+	private void locationManagment() {
+		//先根据用户走过的位置生成一条轨迹，每次开始卸载组件时确定用户的位置
+		
+		//用户首先肯定是从第一个位置开始，执行完一个组件，发送消息查询用户当前位置（即第i个位置）
+		
+	}
+	//
+	public void getLocation() {
+		Random random = new Random();
+		int locIndex = random.nextInt(2);
+		//获得该位置的信息（主要是数据传输速率）
 	}
 	
 	/**
@@ -468,6 +634,15 @@ public class GeneAlg {
 		public void setProbability(double probability) {
 			this.probability = probability;
 		}
+
+		public double getAccumulateProbability() {
+			return accumulateProbability;
+		}
+
+		public void setAccumulateProbability(double accumulateProbability) {
+			this.accumulateProbability = accumulateProbability;
+		}
+		
 	}
 	
 	
@@ -493,7 +668,7 @@ public class GeneAlg {
 		
 		private double probability;		//一个基因位被选择的概率
 
-//		private double waitingTime;		//组件等待执行的时间（这个是不是有Component控制的）
+		private double waitingTime;		//组件等待执行的时间（这个是不是有Component控制的）
 		
 		public double getWorkload() {
 			return workload;
@@ -558,6 +733,14 @@ public class GeneAlg {
 		public void setProbability(double probability) {
 			this.probability = probability;
 		}
+
+		public double getWaitingTime() {
+			return waitingTime;
+		}
+
+		public void setWaitingTime(double waitingTime) {
+			this.waitingTime = waitingTime;
+		}
 		
 	}
 	
@@ -567,10 +750,10 @@ public class GeneAlg {
 	 *
 	 */
 	private class MobileDeviceInfo {
-		private final static double cpu_speed = 0;		//cpu执行速度
-		private final static double compute_power = 0;	//执行任务时的能耗
-		private final static double uplink_power = 0;	//上传数据时的能耗
-		private final static double download_power = 0;	//下载数据时的能耗
+		private final static double cpu_speed = 10;		//cpu执行速度
+		private final static double compute_power = 1;	//执行任务时的能耗
+		private final static double uplink_power = 1;	//上传数据时的能耗
+		private final static double download_power = 1;	//下载数据时的能耗
 	}
 	
 	/**
@@ -579,6 +762,23 @@ public class GeneAlg {
 	 *
 	 */
 	private class CloudServerInfo {
-		private final static double cpu_speed = 0;		//cpu计算能力
+		private final static double cpu_speed = 10;		//cpu计算能力
+	}
+	
+	/**
+	 * 用户移动轨迹
+	 * @author walkerwang
+	 *
+	 */
+	private class MovingTrajectory {
+		private int locNum;		//第i个位置
+		
+		private double waitingTime; 	//在该位置等待的时间
+		
+		private double movingSpeed;		//移动到下一个位置的速度
+		
+		private double uplinkDataRate; 	//数据上传速率
+		
+		private double downloadDataRate; 	//数据下载速率
 	}
 }
