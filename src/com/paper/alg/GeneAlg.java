@@ -50,7 +50,7 @@ public class GeneAlg {
 	List<Strategy> newStrategyList = new ArrayList<>();	
 	
 	int GenSize = 50;	//种群规模
-	int maxIter = 2; 	//最大迭代次数
+	int maxIter = 4; 	//最大迭代次数
 	double pc = 0.9;	//交叉概率
 	double pm = 0.1; 	//变异概率
 	
@@ -104,14 +104,15 @@ public class GeneAlg {
 			
 			//计算每条染色体被选中的概率和累计概率
 			calChromosomeProbability(strategyList, allChromosomeFitness);
+			System.out.println("第" + iter + "代染色体结果：");
 			printStrategy(strategyList);
+			System.out.println();
 			
 			//选择运算：选择出GenSize个优秀的染色体
 			strategyList = select(strategyList);
 			
 			//交叉运算:通过交叉概率确定交叉运算的规模
 			int crossoverNum = (int)(strategyList.size() * pc);
-			/*
 			List<Strategy> crossoverStrategyList = selectStrategyNum(strategyList, crossoverNum);
 			for(int i = 0; i < crossoverNum / 2; i++) {
 				Strategy s = crossover(strategyList.get(i), strategyList.get(i + crossoverNum / 2));
@@ -122,8 +123,14 @@ public class GeneAlg {
 				}
 			}
 			
-			//由于交叉运算是两条父类染色体生成一条子类染色体，种群规模缩减到GenSize/2
-			int addStrategyNum = GenSize - newStrategyList.size();
+			
+			
+			//变异运算:mutationNum次
+			int mutationNum = (int)(strategyList.size() * pm);
+			List<Strategy> mutationStrategyList = selectStrategyNum(strategyList, mutationNum);
+			
+			//由于交叉运算是两条父类染色体生成一条子类染色体
+			int addStrategyNum = GenSize - newStrategyList.size() - mutationStrategyList.size();
 			for(int i = 0; i < addStrategyNum; i++) {
 				Strategy s = randomGenerator();
 				if (!newStrategyList.contains(s)) {
@@ -133,21 +140,22 @@ public class GeneAlg {
 				}
 			}
 			
-			//变异运算:GenSize次
-			int mutationNum = (int)(strategyList.size() * pm);
-			List<Strategy> mutationStrategyList = selectStrategyNum(strategyList, mutationNum);
+			
+			
 			for(int i = 0; i < mutationNum; i++) {
-				Strategy s = mutation(strategyList.get(i));
-				if (!newStrategyList.contains(s)) {
-					newStrategyList.add(s);
-				} else {
-					i--;
-				}
+//				Strategy s = mutation(mutationStrategyList.get(i));
+//				if (!newStrategyList.contains(s)) {
+//					newStrategyList.add(s);
+//				} else {
+//					i--;
+//				}
+				newStrategyList.add(mutation(mutationStrategyList.get(i)));
 			}
 			
 			//产生新的染色体种群newStrategyList
 			strategyList = newStrategyList;
-			*/
+			newStrategyList = new ArrayList<>();
+			
 			iter++;
 		}
 		
@@ -165,13 +173,9 @@ public class GeneAlg {
 		List<Strategy> selectStrategyList = new ArrayList<>();
 		for(int i = 0; i < selectNum; i++) {
 			Random random = new Random();
-			int index = random.nextInt(50);	//产生下标0-49
+			int index = random.nextInt(selectNum);	//产生下标0-49
 			Strategy s = strategyList.get(index);
-			if (!selectStrategyList.contains(s)) {
-				selectStrategyList.add(s);
-			} else {
-				i--;
-			}
+			selectStrategyList.add(s);
 		}
 		return selectStrategyList;
 	}
@@ -284,20 +288,21 @@ public class GeneAlg {
 	 * 基因变异运算：选择适应度最小的基因进行变异
 	 */
 	private Strategy mutation(Strategy s1) {
-		Strategy s = new Strategy();
-		Component minFitnessComponent = null;
-		int location = 0;	//记录适应度最小的基因的下标
+		Component minFitnessComponent = s1.getStructure().get(1);
+		int location = 1;	//记录适应度最小的基因的下标
 		//遍历染色体的所有基因位，选择适应度小的基因
-		for(int i = 1; i <= COMPONENTNUM; i++) {
+		for(int i = 2; i <= COMPONENTNUM; i++) {
 			Component c = s1.getStructure().get(i);
-			if(c.getFitness() > minFitnessComponent.getFitness()) {
-				minFitnessComponent.setFitness(c.getFitness());
+			if(c.getFitness() < minFitnessComponent.getFitness()) {
+				minFitnessComponent = c;
+//				minFitnessComponent.setFitness(c.getFitness());
 				location = i;
 			}
 		}
 		//将适应度最小的基因位进行变异
+		s1.getStructure().put(location, minFitnessComponent);
 		s1.getStructure().get(location).setExecLoc(1 - minFitnessComponent.getExecLoc());
-		return s;
+		return s1;
 	}
 	
 	/**
@@ -384,15 +389,14 @@ public class GeneAlg {
 			
 		//执行时间大于停留时间，用户向下一个位置移动
 		if (pauseTime < componentExeTime) {
-//			//移动到下一个位置
-//			if (movingSpeed <= MOVING_ONELOC_SPEED) {
-//				currentLoc++;
-//			}
-//			//移动到下两个位置
-//			if (MOVING_ONELOC_SPEED < movingSpeed && movingSpeed <= MOVING_TWOLOC_SPEED) {
-//				currentLoc += 2;
-//			}
-			currentLoc++;
+			//移动到下一个位置
+			if (movingSpeed <= MOVING_ONELOC_SPEED) {
+				currentLoc++;
+			}
+			//移动到下两个位置
+			if (MOVING_ONELOC_SPEED < movingSpeed && movingSpeed <= MOVING_TWOLOC_SPEED) {
+				currentLoc += 2;
+			}
 		}
 		
 		//计算基因的适应度的公式
@@ -412,6 +416,13 @@ public class GeneAlg {
 			Component c = map.get(i);
 			chromosomeTime += calComponentTime(c, i);
 		}
+		for (int i = 0; i < GenSize; i++) {
+			Strategy s1 = strategyList.get(i);
+			for (int j = 1; j <= COMPONENTNUM; j++) {
+				Component c1 = s1.getStructure().get(j);
+				c1.setTime(calComponentTime(c1, j));
+			}
+		}
 		return chromosomeTime;
 	}
 	
@@ -425,6 +436,13 @@ public class GeneAlg {
 		for(int i = 1; i <= COMPONENTNUM; i++) {
 			Component c = map.get(i);
 			chromosomeEnergy += calComponentEnergy(c, i);
+		}
+		for (int i = 0; i < GenSize; i++) {
+			Strategy s1 = strategyList.get(i);
+			for (int j = 1; j <= COMPONENTNUM; j++) {
+				Component c1 = s1.getStructure().get(j);
+				c1.setTime(calComponentEnergy(c1, j));
+			}
 		}
 		return chromosomeEnergy;
 	}
@@ -453,6 +471,7 @@ public class GeneAlg {
 			componentExeTime = component.getUplinkDataSize() / uplinkDataRate + component.getWorkload() / CloudServerInfo.cpu_speed +
 					component.getDownloadDataSize() / downloadDataRate + component.getWaitingTime();		//3	
 		}
+		c.setTime(componentExeTime);
 		return componentExeTime;
 	}
 	
@@ -479,6 +498,7 @@ public class GeneAlg {
 			componentEnergy = (component.getUplinkDataSize() / uplinkDataRate) * MobileDeviceInfo.uplink_power +
 					(component.getDownloadDataSize() / downloadDataRate) * MobileDeviceInfo.download_power + 1;  	//2
 		}
+		c.setEnergy(componentEnergy);
 		return componentEnergy;
 	}
 	
@@ -652,7 +672,7 @@ public class GeneAlg {
 	 * 输出染色体信息
 	 */
 	public void printChromosomeInfo(Strategy globalBestStrategy) {
-		System.out.println();
+		System.out.println("------------------------------------------------");
 		System.out.print("最优染色体策略：");
 		Map<Integer, Component> structureMap = globalBestStrategy.getStructure();
 		for(int i = 1; i <= COMPONENTNUM; i++) {
