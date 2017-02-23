@@ -19,10 +19,6 @@ public class GeneAlg {
 		geneAlg.run();
 	}
 	
-	/**
-	 * 容错：只考虑一次就恢复成功的情况，不考虑嵌套错误恢复
-	 */
-	
 	private static final int COMPONENTNUM = 7;	//组件个数，即染色体中的值的个数
 	
 	private static final double WEIGHT = 0.5;	//线性加权的权重
@@ -30,6 +26,20 @@ public class GeneAlg {
 	private static final double FAILURE_RECOVERY_TIME = 0;	//错误恢复时间（假设SFR阶段不出现嵌套错误）
 	
 	private static final double DISCONNECTION_TIME = 0;		//断点续传时，网络断开的时间
+	
+	private static final double MOVING_ONELOC_SPEED = 2;	//用户移动到下一个位置的速度
+	
+	private static final double MOVING_TWOLOC_SPEED = 5; 	//用户移动到下两个位置的速度
+	
+	private static final int TRAJECTORY = 30;		//轨迹走过的位置数量
+	
+	private static final double MIN_PAUSE_TIME = 1;		//用户在i位置的最小停留时间
+		
+	private static final double MAX_PASUE_TIME = 3;		//用户在i位置的最大停留时间
+	
+	private static final double MIN_MOVING_SPEED = 1;		//用户从i位置向i+1位置的最小移动速度
+	
+	private static final double MAX_MOVING_SPEED = 4;		//用户从i位置向i+1位置的最大移动速度
 	
 	Map<Integer, Component> componentMap = new HashMap<>();
 	
@@ -44,25 +54,36 @@ public class GeneAlg {
 	double pc = 0.9;	//交叉概率
 	double pm = 0.1; 	//变异概率
 	
+	//生成一条用户移动的轨迹
+	Map<Integer, Trajectory> trajectoryMap = new HashMap<>();
+	
+	
+	DecimalFormat df = new DecimalFormat("#.000");	//用户格式化数据，double输出保留三位小数
+	
+	int currentLoc = 1;  	//记录用户当前所处位置
+	
 	/**
 	 * 遗传算法运行入口
 	 */
 	public void run() {
 		
-		//用户移动的轨迹
-		Map<String, String> trajectory = new HashMap<>();
-		
+		currentLoc = 1;
 		//初始化每个组件的信息
 		initComponentInfo(componentMap);
-		printComponentInfo(componentMap);
+//		printComponentInfo(componentMap);
 		
 		//随机产生一组GenSize条染色体
 		initStrategyPopulation(GenSize, strategyList);
 //		printStrategy(strategyList);
+		
 		//生成种群后更新Component类信息
 		updateComponentMap(strategyList, componentMap);
 		
+		//初始化用户轨迹
+		initTrajectory(trajectoryMap);
+		
 		Strategy globalBestStrategy = strategyList.get(0);
+		globalBestStrategy.setCurrentLoc(currentLoc);
 		
 		//开始迭代
 		int iter = 1;
@@ -74,7 +95,7 @@ public class GeneAlg {
 			double allChromosomeFitness = calAllChromosomeFitness(strategyList);
 			
 			localBestStrategy = selectMinFitnessChromosome(strategyList);
-			
+			localBestStrategy.setCurrentLoc(currentLoc);
 			
 			//本代最优，与全局最优进行比较:若本代中的染色体比全局最优的染色体的适应度更小，则更新全局染色体
 			if (localBestStrategy.getFitness() < globalBestStrategy.getFitness()) {
@@ -88,9 +109,9 @@ public class GeneAlg {
 			//选择运算：选择出GenSize个优秀的染色体
 			strategyList = select(strategyList);
 			
-			/*
 			//交叉运算:通过交叉概率确定交叉运算的规模
 			int crossoverNum = (int)(strategyList.size() * pc);
+			/*
 			List<Strategy> crossoverStrategyList = selectStrategyNum(strategyList, crossoverNum);
 			for(int i = 0; i < crossoverNum / 2; i++) {
 				Strategy s = crossover(strategyList.get(i), strategyList.get(i + crossoverNum / 2));
@@ -194,10 +215,8 @@ public class GeneAlg {
 		//计算每条染色体的累计概率
 		for(int i = 0; i < strategyList.size(); i++) {
 			Strategy s = strategyList.get(i);
-			s.accumulateProbability = calAccumulateProbability(s, i);
-			
-			DecimalFormat df = new DecimalFormat("#.000");
-			s.accumulateProbability = Double.valueOf(df.format(s.accumulateProbability));
+			double accumulateProbability = calAccumulateProbability(s, i);
+			s.setAccumulateProbability(Double.valueOf(df.format(accumulateProbability)));
 		}
 	}
 	
@@ -210,7 +229,7 @@ public class GeneAlg {
 		double accumulateProbability = 0;
 		int i = 0;
 		while(i <= sLoc) {
-			s.accumulateProbability += strategyList.get(i).getProbability();
+			accumulateProbability += strategyList.get(i).getProbability();
 			i++;
 		}
 		return accumulateProbability;
@@ -228,7 +247,8 @@ public class GeneAlg {
 			Iterator<Strategy> iter = strategyList.iterator();
 			while(iter.hasNext()) {
 				Strategy s = iter.next();
-				if (probability < s.getAccumulateProbability()) {	//说明概率落在s上，即s被选择中
+				double accumulateProbability = s.getAccumulateProbability();
+				if (probability < accumulateProbability) {	//说明概率落在s上，即s被选择中
 					selectStrategyList.add(s);
 					break;	 //s已被选中，此次轮盘赌已经结束
 				}
@@ -314,8 +334,18 @@ public class GeneAlg {
 			chromosomeEnergy += componentEnergy;
 		}
 		
-		//计算染色体的适应度的具体公式
-		chromosomeFitness = WEIGHT * chromosomeTime + (1 - WEIGHT) * chromosomeEnergy;
+//		//计算染色体的适应度的具体公式
+//		chromosomeFitness = WEIGHT * chromosomeTime + (1 - WEIGHT) * chromosomeEnergy;
+//		
+//		chromosomeFitness = 0;
+		
+		for(int i = 1; i <= COMPONENTNUM; i++) {
+			chromosomeFitness += calComponentFitness(s1.getStructure().get(i), i);
+		}
+		
+		chromosomeTime = Double.valueOf(df.format(chromosomeTime));
+		chromosomeEnergy = Double.valueOf(df.format(chromosomeEnergy));
+		chromosomeFitness = Double.valueOf(df.format(chromosomeFitness));
 		
 		strategyList.get(loc).setTime(chromosomeTime);
 		strategyList.get(loc).setEnergy(chromosomeEnergy);
@@ -325,17 +355,45 @@ public class GeneAlg {
 	
 	/**
 	 * 计算单个基因（组件）的适应度
+	 * @param component  组件
+	 * @param i  组件下标
 	 */
-	public double calComponentFitness(Component component, int loc) {
+	public double calComponentFitness(Component component, int i) {
 		double componentTime = 0;
 		double componentEnergy = 0;
 		double componentFitness = 0;
+		double componentExeTime = calComponentEnergy(component, i);
 		
-		//计算基因的执行时间
-		componentTime = calComponentTime(component, loc);
+		//获取用户的当前位置信息
+		Trajectory trajectory = trajectoryMap.get(currentLoc);
+		double pauseTime = trajectory.getPauseTime();
+		double movingSpeed = trajectory.getMovingSpeed();
+		double uplinkDataRate = trajectory.getUplinkDataRate();
+		double downloadDataRate = trajectory.getDownloadDataRate();
 		
-		//计算基因的能耗
-		componentEnergy = calComponentEnergy(component, loc);
+		//网络断开，执行容错机制
+		if (uplinkDataRate == 0 || downloadDataRate == 0) {
+			startFaultTolerance(component, currentLoc);
+		} else {
+			//计算基因的执行时间
+			componentTime = calComponentTime(component, i);
+			
+			//计算基因的能耗
+			componentEnergy = calComponentEnergy(component, i);
+		}
+			
+		//执行时间大于停留时间，用户向下一个位置移动
+		if (pauseTime < componentExeTime) {
+//			//移动到下一个位置
+//			if (movingSpeed <= MOVING_ONELOC_SPEED) {
+//				currentLoc++;
+//			}
+//			//移动到下两个位置
+//			if (MOVING_ONELOC_SPEED < movingSpeed && movingSpeed <= MOVING_TWOLOC_SPEED) {
+//				currentLoc += 2;
+//			}
+			currentLoc++;
+		}
 		
 		//计算基因的适应度的公式
 		componentFitness = WEIGHT * componentTime + (1 - WEIGHT) * componentEnergy;
@@ -373,17 +431,27 @@ public class GeneAlg {
 	
 	/**
 	 * 计算基因（组件）的执行时间 
+	 * @param c	 组件对象
+	 * @param i	 第i个组件
 	 */
-	public double calComponentTime(Component c, int loc) {
+	public double calComponentTime(Component c, int i) {
 		double componentExeTime = 0.0;
-		Component component = componentMap.get(loc);
-		component.setExecLoc(c.getExecLoc());
+		Component component = componentMap.get(i);
+		
+		//获取用户的当前位置信息
+		Trajectory trajectory = trajectoryMap.get(currentLoc);
+		double movingSpeed = trajectory.getMovingSpeed();
+		double uplinkDataRate = trajectory.getUplinkDataRate();
+		double downloadDataRate = trajectory.getDownloadDataRate();
+		
+		//componentMap和strategyList中的Map不互通处理一下即可
+		component.setExecLoc(c.getExecLoc());	
 		if (component.getExecLoc() == 0) {	//在移动端执行
 			componentExeTime = component.getWorkload() / MobileDeviceInfo.cpu_speed;	//1
 		} else {	//组件在云端执行
 			//组件在移动端：时间=上传时间+计算时间+下载时间+等待时间
-			componentExeTime = component.getUplinkDataSize() / 10 + component.getWorkload() / CloudServerInfo.cpu_speed +
-					component.getDownloadDataSize() / 10 + component.getWaitingTime();		//3	
+			componentExeTime = component.getUplinkDataSize() / uplinkDataRate + component.getWorkload() / CloudServerInfo.cpu_speed +
+					component.getDownloadDataSize() / downloadDataRate + component.getWaitingTime();		//3	
 		}
 		return componentExeTime;
 	}
@@ -394,14 +462,22 @@ public class GeneAlg {
 	public double calComponentEnergy(Component c, int loc) {
 		double componentEnergy = 0.0;
 		double componentExeTime = 0.0;
+		
+		//获取用户的当前位置信息
+		Trajectory trajectory = trajectoryMap.get(currentLoc);
+		double pauseTime = trajectory.getPauseTime();
+		double movingSpeed = trajectory.getMovingSpeed();
+		double uplinkDataRate = trajectory.getUplinkDataRate();
+		double downloadDataRate = trajectory.getDownloadDataRate();
+		
 		Component component = componentMap.get(loc);
 		component.setExecLoc(c.getExecLoc());
 		if (component.getExecLoc() == 0) {	//在移动端执行
 			componentExeTime = component.getWorkload() / MobileDeviceInfo.cpu_speed;	//1
 			componentEnergy = componentExeTime * MobileDeviceInfo.compute_power;	//1
 		} else {	//组件在云端执行
-			componentEnergy = (component.getUplinkDataSize() / 10) * MobileDeviceInfo.uplink_power +
-					(component.getDownloadDataSize() / 10) * MobileDeviceInfo.download_power + 1;  	//2
+			componentEnergy = (component.getUplinkDataSize() / uplinkDataRate) * MobileDeviceInfo.uplink_power +
+					(component.getDownloadDataSize() / downloadDataRate) * MobileDeviceInfo.download_power + 1;  	//2
 		}
 		return componentEnergy;
 	}
@@ -434,7 +510,7 @@ public class GeneAlg {
 		double waitingTime = 0;
 		int count = 1;
 		
-		//从本地文件读取每个组件的信息：工作负载、上传数据大小、下载数据大小
+		//从本地文件读取每个组件的信息：工作负载、上传数据大小、下载数据大小、等待时间
 		String fileName = "mobileinfo.txt";
 		File file = new File(fileName);
 		try {
@@ -479,6 +555,40 @@ public class GeneAlg {
 	}
 
 	/**
+	 * 生成一条轨迹（如果是多用户，可以给每个用户生成一条轨迹）
+	 * @param trajectoryMap
+	 */
+	private void initTrajectory(Map<Integer, Trajectory> trajectoryMap) {
+		Random random = new Random();
+		for(int i = 1; i <= TRAJECTORY; i++) {
+			Trajectory trajectory = new Trajectory();
+			trajectory.setLocNum(i);
+			
+			//在[MIN_PAUSE_TIME, MAX_PASUE_TIME]之间的随机数，表示用户在i位置的停留时间
+			double pauseTime = Math.random() * (MAX_PASUE_TIME - MIN_PAUSE_TIME) + MIN_PAUSE_TIME;
+			trajectory.setPauseTime(pauseTime);
+			
+			//在[MAX_MOVING_SPEED, MIN_MOVING_SPEED]之间的随机数，表示用户从i位置移动到i+1位置的移动速度
+			double movingSpeed = Math.random() * (MAX_MOVING_SPEED - MIN_MOVING_SPEED) + MIN_MOVING_SPEED;
+			trajectory.setMovingSpeed(movingSpeed);
+			
+			double uplinkDataRate, downloadDataRate;
+			
+			//表示从第1个位置B最强，移动过程中数据传输速度不断降低
+			if (i % 10 == 0) {
+				uplinkDataRate = 0;		//设置在位置10/20/30数据传输速率为0
+			} else {
+				uplinkDataRate = 4 * (10 - i);
+			}
+			downloadDataRate = uplinkDataRate;
+			
+			trajectory.setUplinkDataRate(uplinkDataRate);
+			trajectory.setDownloadDataRate(downloadDataRate);
+			trajectoryMap.put(i, trajectory);
+		}
+	}
+	
+	/**
 	 * 随机生成一条染色体（一组策略）
 	 */
 	private Strategy randomGenerator() {
@@ -487,7 +597,9 @@ public class GeneAlg {
 		Map<Integer, Component> structure = new TreeMap<>();
 		int num = 1;
 		while(num <= COMPONENTNUM) {
-			Component c = new Component();		//重新初始化（*）
+			//对象创建（*）：每一个Component对象都要创建一个对象，不然都在内存中是指向同一个对象
+			Component c = new Component();		
+			
 			c.setExecLoc(Math.random() > 0.5 ? 0 : 1);	//为组件生成一个执行位置
 			structure.put(num, c);
 			num++;
@@ -517,6 +629,7 @@ public class GeneAlg {
 //			System.out.print( "   能耗:" + s.getEnergy());
 			System.out.print("   适应度:" + s.getFitness());
 			System.out.print("   选中概率:" + s.getProbability());
+			System.out.print("   累计概率:" + s.getAccumulateProbability());
 			System.out.println();
 			count++;
 		}
@@ -539,6 +652,7 @@ public class GeneAlg {
 	 * 输出染色体信息
 	 */
 	public void printChromosomeInfo(Strategy globalBestStrategy) {
+		System.out.println();
 		System.out.print("最优染色体策略：");
 		Map<Integer, Component> structureMap = globalBestStrategy.getStructure();
 		for(int i = 1; i <= COMPONENTNUM; i++) {
@@ -551,10 +665,11 @@ public class GeneAlg {
 	}
 	
 	/**
-	 * 启动容错机制
+	 * 启动容错机制:容错：只考虑一次就恢复成功的情况，不考虑嵌套错误恢复
 	 * @param c	 出现网络断开的组件
+	 * @param currentLoc	出错组件所在位置
 	 */
-	private void startFaultTolerance(Component c) {
+	private void startFaultTolerance(Component c, int currentLoc) {
 		
 	}
 	
@@ -590,6 +705,8 @@ public class GeneAlg {
 		private double probability;		//选择的概率
 		
 		private double accumulateProbability;	//累计概率（用于轮盘赌选择）
+		
+		private int currentLoc;		//该策略执行完毕用户的当前位置
 		
 		public Strategy() {
 			structure = new TreeMap<>();	//初始化structure结构，不然会有异常
@@ -641,6 +758,14 @@ public class GeneAlg {
 
 		public void setAccumulateProbability(double accumulateProbability) {
 			this.accumulateProbability = accumulateProbability;
+		}
+
+		public int getCurrentLoc() {
+			return currentLoc;
+		}
+
+		public void setCurrentLoc(int currentLoc) {
+			this.currentLoc = currentLoc;
 		}
 		
 	}
@@ -750,7 +875,7 @@ public class GeneAlg {
 	 *
 	 */
 	private class MobileDeviceInfo {
-		private final static double cpu_speed = 10;		//cpu执行速度
+		private final static double cpu_speed = 10;		//cpu计算能力
 		private final static double compute_power = 1;	//执行任务时的能耗
 		private final static double uplink_power = 1;	//上传数据时的能耗
 		private final static double download_power = 1;	//下载数据时的能耗
@@ -770,15 +895,58 @@ public class GeneAlg {
 	 * @author walkerwang
 	 *
 	 */
-	private class MovingTrajectory {
+	private class Trajectory {
 		private int locNum;		//第i个位置
 		
-		private double waitingTime; 	//在该位置等待的时间
+		private double pauseTime; 	//在该位置等待的时间
 		
 		private double movingSpeed;		//移动到下一个位置的速度
 		
 		private double uplinkDataRate; 	//数据上传速率
 		
 		private double downloadDataRate; 	//数据下载速率
+
+		public Trajectory() {
+		}
+		
+		public int getLocNum() {
+			return locNum;
+		}
+
+		public void setLocNum(int locNum) {
+			this.locNum = locNum;
+		}
+
+		public double getPauseTime() {
+			return pauseTime;
+		}
+
+		public void setPauseTime(double pauseTime) {
+			this.pauseTime = pauseTime;
+		}
+
+		public double getMovingSpeed() {
+			return movingSpeed;
+		}
+
+		public void setMovingSpeed(double movingSpeed) {
+			this.movingSpeed = movingSpeed;
+		}
+
+		public double getUplinkDataRate() {
+			return uplinkDataRate;
+		}
+
+		public void setUplinkDataRate(double uplinkDataRate) {
+			this.uplinkDataRate = uplinkDataRate;
+		}
+
+		public double getDownloadDataRate() {
+			return downloadDataRate;
+		}
+
+		public void setDownloadDataRate(double downloadDataRate) {
+			this.downloadDataRate = downloadDataRate;
+		}
 	}
 }
