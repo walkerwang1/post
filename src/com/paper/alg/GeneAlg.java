@@ -23,9 +23,11 @@ public class GeneAlg {
 	
 	private static final double WEIGHT = 0.5;	//线性加权的权重
 	
-	private static final double FAILURE_RECOVERY_TIME = 0;	//错误恢复时间（假设SFR阶段不出现嵌套错误）
+	private static final double FAILURE_RECOVERY_TIME = 0;	//错误恢复时间（假设SFR阶段不出现嵌套错误）:R*
 	
-	private static final double DISCONNECTION_TIME = 0;		//断点续传时，网络断开的时间
+	private static final double DISCONNECTION_TIME = 0;		//断点续传时，网络断开的时间：G
+	
+	private static final double FIRST_FAILURE_TIME = 0;   
 	
 	private static final double MOVING_ONELOC_SPEED = 2;	//用户移动到下一个位置的速度
 	
@@ -50,7 +52,7 @@ public class GeneAlg {
 	List<Strategy> newStrategyList = new ArrayList<>();	
 	
 	int GenSize = 50;	//种群规模
-	int maxIter = 4; 	//最大迭代次数
+	int maxIter = 10; 	//最大迭代次数
 	double pc = 0.9;	//交叉概率
 	double pm = 0.1; 	//变异概率
 	
@@ -87,7 +89,7 @@ public class GeneAlg {
 		
 		//开始迭代
 		int iter = 1;
-		while(iter < maxIter) {
+		while(iter <= maxIter) {
 			//本代染色体中最优的卸载策略
 			Strategy localBestStrategy = new Strategy();
 			
@@ -378,7 +380,10 @@ public class GeneAlg {
 		
 		//网络断开，执行容错机制
 		if (uplinkDataRate == 0 || downloadDataRate == 0) {
-			startFaultTolerance(component, currentLoc);
+			//选择一种恢复机制，返回使用该机制的执行时间，能耗
+			double[] ret = startFaultTolerance(component, i, currentLoc);
+			componentTime = ret[0];
+			componentEnergy = ret[1];
 		} else {
 			//计算基因的执行时间
 			componentTime = calComponentTime(component, i);
@@ -687,12 +692,153 @@ public class GeneAlg {
 	/**
 	 * 启动容错机制:容错：只考虑一次就恢复成功的情况，不考虑嵌套错误恢复
 	 * @param c	 出现网络断开的组件
+	 * @param i	组件的位置
 	 * @param currentLoc	出错组件所在位置
 	 */
-	private void startFaultTolerance(Component c, int currentLoc) {
+	private double[] startFaultTolerance(Component c,int i, int currentLoc) {
+		double[] ret = new double[2];
 		
+		double finalExeTime = 0, finalEnergy = 0;
+		
+		double exeTime = calComponentTime(c, i);
+		
+		//发生错误重新执行组件
+		double restartServiceTime = calRestartServiceTime( c, i, currentLoc, exeTime);
+		double restartServiceEnergy = calRestartServiceEnergy( c, i,  currentLoc, exeTime);
+		
+		double fitnessRestartServcie = WEIGHT * restartServiceTime + (1 - WEIGHT) * restartServiceEnergy;
+		
+		//发生错误从错误点恢复继续执行
+		double faultToleranceTime = calFaultToleranceTime( c, i,  currentLoc, exeTime);
+		double faultToleranceEnergy = calFaultToleranceEnergy( c, i,  currentLoc, exeTime);
+		
+		double fitnessWithFaultTolerance = WEIGHT * faultToleranceTime + (1 - WEIGHT) * faultToleranceEnergy;
+		
+		//发生错误的时间小于组件执行时间，则错误发生
+		if (FIRST_FAILURE_TIME < exeTime) {
+			if (fitnessRestartServcie < fitnessWithFaultTolerance) {
+				finalExeTime = restartServiceTime;
+				finalEnergy = restartServiceEnergy;
+			} else {
+				finalExeTime = faultToleranceTime;
+				finalEnergy = faultToleranceEnergy;
+			}
+		}
+		
+		ret[0] = finalExeTime;
+		ret[1] = finalEnergy;
+		
+		return ret;
 	}
 	
+	/**
+	 * 重新开始执行的时间
+	 */
+	public double calRestartServiceTime(Component c,int i, int currentLoc, double exeTime) {
+		double restartServiceTime = 0;
+		if (FIRST_FAILURE_TIME >= exeTime) {
+			restartServiceTime = exeTime;
+		} else {
+			restartServiceTime = FIRST_FAILURE_TIME + FAILURE_RECOVERY_TIME + exeTime;
+		}
+		return restartServiceTime;
+	}
+	
+	/**
+	 * 重新开始执行的能耗
+	 */
+	public double calRestartServiceEnergy(Component c,int i, int currentLoc, double exeTime) {
+		double restartServiceEnergy = 0;
+		double sourceEnergy = calComponentEnergy(c, i);
+		
+		//上传、计算、下载时三个阶段的时间
+		double[] threePhraseTime = calThreePhraseTime(c, i, currentLoc);
+		
+		double uplinkTime = threePhraseTime[0];
+		double compTime = threePhraseTime[1];
+		double downloadTime  = threePhraseTime[2];
+		
+		Trajectory trajectory = trajectoryMap.get(currentLoc);
+		double uplinkDataRate = trajectory.getUplinkDataRate();
+		double downloadDateRate = trajectory.getDownloadDataRate();
+		
+		//第一次发生错误的时间 >= exeTime，表示错误发生时组件已经执行完了
+		if (FIRST_FAILURE_TIME >= exeTime) {
+			restartServiceEnergy = sourceEnergy;
+		}
+		
+		//上传数据阶段发生错误
+		if (FIRST_FAILURE_TIME < uplinkTime) {
+			//上传一半的数据时错误发生
+			uplinkTime = c.getUplinkDataSize() / 2 / uplinkDataRate;
+			restartServiceEnergy = FIRST_FAILURE_TIME * uplinkDataRate + sourceEnergy;
+		}
+		
+		//在云端执行组件时发生错误
+		if (FIRST_FAILURE_TIME >= uplinkTime && FIRST_FAILURE_TIME < (uplinkTime + compTime)) {
+			restartServiceEnergy = uplinkTime * uplinkDataRate + sourceEnergy;
+		}
+		
+		//下载数据阶段发生错误
+		if (FIRST_FAILURE_TIME >= (uplinkTime + compTime) && FIRST_FAILURE_TIME < exeTime) {
+			downloadTime = c.getDownloadDataSize() / 2 / downloadDateRate;
+			restartServiceEnergy = uplinkTime * uplinkDataRate + downloadTime * downloadDateRate + sourceEnergy;
+		}
+		
+		return restartServiceEnergy;
+	}
+	
+	/**
+	 * 从断点继续执行的时间
+	 */
+	public double calFaultToleranceTime(Component c,int i, int currentLoc, double exeTime) {
+		
+		return 0;
+	}
+	
+	/**
+	 * 从断点继续执行的能耗
+	 */
+	public double calFaultToleranceEnergy(Component c,int i, int currentLoc, double exeTime) {
+		double faultToleranceEnergy = 0;
+		
+		//没出错时的能耗
+		double sourceEnergy = calComponentEnergy(c, i);
+		
+		//上传、计算、下载时三个阶段的时间
+		double[] threePhraseTime = calThreePhraseTime(c, i, currentLoc);
+		double uplinkTime = threePhraseTime[0];
+		double compTime = threePhraseTime[1];
+		double downloadTime  = threePhraseTime[2];
+		
+		Trajectory trajectory = trajectoryMap.get(currentLoc);
+		double uplinkDataRate = trajectory.getUplinkDataRate();
+		double downloadDateRate = trajectory.getDownloadDataRate();
+		
+		//第一次发生错误的时间 >= exeTime，表示错误发生时组件已经执行完了
+		if (FIRST_FAILURE_TIME >= exeTime) {
+			faultToleranceEnergy = sourceEnergy;
+		}
+		
+		//上传数据阶段发生错误
+		if (FIRST_FAILURE_TIME < uplinkTime) {
+			//上传一半的数据时错误发生
+			double hasUplinkDataSize = c.getUplinkDataSize() / 2;
+			uplinkTime = c.getUplinkDataSize() / 2 / uplinkDataRate;
+		}
+		
+		//在云端执行组件时发生错误
+		if (FIRST_FAILURE_TIME >= uplinkTime && FIRST_FAILURE_TIME < (uplinkTime + compTime)) {
+		}
+		
+		//下载数据阶段发生错误
+		if (FIRST_FAILURE_TIME >= (uplinkTime + compTime) && FIRST_FAILURE_TIME < exeTime) {
+			downloadTime = c.getDownloadDataSize() / 2 / downloadDateRate;
+		}
+		
+		return 0;
+	}
+
 	/**
 	 * 用户移动位置处理
 	 */
@@ -707,6 +853,24 @@ public class GeneAlg {
 		Random random = new Random();
 		int locIndex = random.nextInt(2);
 		//获得该位置的信息（主要是数据传输速率）
+	}
+	
+	public double[] calThreePhraseTime(Component c,int i, int currentLoc) {
+		double[] threePhraseTime = new double[3];
+		
+		Trajectory trajectory = trajectoryMap.get(currentLoc);
+		double uplinkDataRate = trajectory.getUplinkDataRate();
+		double downloadDataRate = trajectory.getDownloadDataRate();
+		
+		double uplinkTime = c.getUplinkDataSize() / uplinkDataRate;
+		double compTime = c.getWorkload() / CloudServerInfo.cpu_speed;
+		double downloadTime = c.getDownloadDataSize() / downloadDataRate;
+		
+		threePhraseTime[0] = uplinkTime;
+		threePhraseTime[1] = compTime;
+		threePhraseTime[2] = downloadTime;
+		
+		return threePhraseTime;
 	}
 	
 	/**
