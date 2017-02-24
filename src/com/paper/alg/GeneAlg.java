@@ -23,11 +23,11 @@ public class GeneAlg {
 	
 	private static final double WEIGHT = 0.5;	//线性加权的权重
 	
-	private static final double FAILURE_RECOVERY_TIME = 0;	//错误恢复时间（假设SFR阶段不出现嵌套错误）:R*
+	private static final double FAILURE_RECOVERY_TIME = 5;	//错误恢复时间（假设SFR阶段不出现嵌套错误）:R*
 	
-	private static final double DISCONNECTION_TIME = 0;		//断点续传时，网络断开的时间：G
+	private static final double DURATION_OF_DISCONNECTION = 2;		//断点续传时，网络断开的时间：G
 	
-	private static final double FIRST_FAILURE_TIME = 0;   
+	private static final double FIRST_FAILURE_TIME = 5;   
 	
 	private static final double MOVING_ONELOC_SPEED = 2;	//用户移动到下一个位置的速度
 	
@@ -792,8 +792,46 @@ public class GeneAlg {
 	 * 从断点继续执行的时间
 	 */
 	public double calFaultToleranceTime(Component c,int i, int currentLoc, double exeTime) {
+		double faultToleranceTime = 0;
 		
-		return 0;
+		Trajectory trajectory = trajectoryMap.get(currentLoc);
+		double uplinkDataRate = trajectory.getUplinkDataRate();
+		double downloadDateRate = trajectory.getDownloadDataRate();
+		
+		//上传、计算、下载时三个阶段的时间
+		double[] threePhraseTime = calThreePhraseTime(c, i, currentLoc);
+		double uplinkTime = threePhraseTime[0];
+		double compTime = threePhraseTime[1];
+		double downloadTime  = threePhraseTime[2];
+				
+		//第一次发生错误的时间 >= exeTime，表示错误发生时组件已经执行完了
+		if (FIRST_FAILURE_TIME >= exeTime) {
+			faultToleranceTime = exeTime;
+		}
+		
+		//上传数据阶段发生错误
+		if (FIRST_FAILURE_TIME < uplinkTime) {
+			//上传一部分的数据时错误发生
+			double hasUplinkDataSize = c.getUplinkDataSize() * Math.random();
+			faultToleranceTime = hasUplinkDataSize / uplinkDataRate * DURATION_OF_DISCONNECTION + FAILURE_RECOVERY_TIME +
+					(c.getUplinkDataSize() - hasUplinkDataSize) / uplinkDataRate + compTime + c.getWaitingTime() + downloadTime;
+		}
+		
+		//在云端执行组件时发生错误
+		if (FIRST_FAILURE_TIME >= uplinkTime && FIRST_FAILURE_TIME < (uplinkTime + compTime)) {
+			faultToleranceTime = uplinkTime + compTime + c.getWaitingTime() + DURATION_OF_DISCONNECTION + 
+					FAILURE_RECOVERY_TIME + downloadTime;
+		}
+		
+		//下载数据阶段发生错误
+		if (FIRST_FAILURE_TIME >= (uplinkTime + compTime) && FIRST_FAILURE_TIME < exeTime) {
+			//下载一部分数据时错误发生
+			double hasDownloadDataSize = c.getDownloadDataSize() * Math.random();
+			faultToleranceTime = uplinkTime + compTime + c.getWaitingTime() + hasDownloadDataSize / downloadDateRate +
+					DURATION_OF_DISCONNECTION + FAILURE_RECOVERY_TIME + (c.getDownloadDataSize() - hasDownloadDataSize) / downloadDateRate;
+		}
+		
+		return faultToleranceTime;
 	}
 	
 	/**
@@ -823,20 +861,25 @@ public class GeneAlg {
 		//上传数据阶段发生错误
 		if (FIRST_FAILURE_TIME < uplinkTime) {
 			//上传一半的数据时错误发生
-			double hasUplinkDataSize = c.getUplinkDataSize() / 2;
-			uplinkTime = c.getUplinkDataSize() / 2 / uplinkDataRate;
+			double hasUplinkDataSize = c.getUplinkDataSize() * Math.random();
+			faultToleranceEnergy = hasUplinkDataSize / uplinkDataRate * MobileDeviceInfo.uplink_power + 
+					(c.getUplinkDataSize() - hasUplinkDataSize) / uplinkDataRate * MobileDeviceInfo.uplink_power + 
+					c.getDownloadDataSize() / downloadDateRate * MobileDeviceInfo.download_power;
 		}
 		
 		//在云端执行组件时发生错误
 		if (FIRST_FAILURE_TIME >= uplinkTime && FIRST_FAILURE_TIME < (uplinkTime + compTime)) {
+			faultToleranceEnergy = uplinkTime * MobileDeviceInfo.uplink_power + downloadTime * MobileDeviceInfo.download_power;
 		}
 		
 		//下载数据阶段发生错误
 		if (FIRST_FAILURE_TIME >= (uplinkTime + compTime) && FIRST_FAILURE_TIME < exeTime) {
-			downloadTime = c.getDownloadDataSize() / 2 / downloadDateRate;
+			double hasDownloadDataSize = c.getDownloadDataSize() * Math.random();
+			faultToleranceEnergy = uplinkTime * MobileDeviceInfo.uplink_power + hasDownloadDataSize / downloadDateRate * MobileDeviceInfo.download_power +
+					(c.getDownloadDataSize() - hasDownloadDataSize) / downloadDateRate * MobileDeviceInfo.download_power;
 		}
 		
-		return 0;
+		return faultToleranceEnergy;
 	}
 
 	/**
