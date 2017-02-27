@@ -33,5 +33,9 @@ public class DECM {
 		private int xLoc;	//x坐标
 		
 		private int yLoc;	//y坐标
+		
+		private double cellNet;		//4G网络
+		
+		private double wifiNet;		//WiFi网络
 	}
 }

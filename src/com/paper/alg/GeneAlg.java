@@ -43,6 +43,8 @@ public class GeneAlg {
 	
 	private static final double MAX_MOVING_SPEED = 4;		//用户从i位置向i+1位置的最大移动速度
 	
+	private static final double BASESTATION_SWITCH_TIME = 2;	//基站之间切换时间
+	
 	Map<Integer, Component> componentMap = new HashMap<>();
 	
 	//本代的染色体种群
@@ -714,6 +716,12 @@ public class GeneAlg {
 		
 		double fitnessWithFaultTolerance = WEIGHT * faultToleranceTime + (1 - WEIGHT) * faultToleranceEnergy;
 		
+		//基站之间切换
+		double switchBaseStationTime = calComponentTime(c, i);
+		double switchBaseStationEnergy = calComponentEnergy(c, i);
+		
+		double fitnessSwitchBaseStation =  WEIGHT * (switchBaseStationTime + BASESTATION_SWITCH_TIME) + (1 - WEIGHT) * switchBaseStationEnergy;
+		
 		//发生错误的时间小于组件执行时间，则错误发生
 		if (FIRST_FAILURE_TIME < exeTime) {
 			if (fitnessRestartServcie < fitnessWithFaultTolerance) {
@@ -722,6 +730,14 @@ public class GeneAlg {
 			} else {
 				finalExeTime = faultToleranceTime;
 				finalEnergy = faultToleranceEnergy;
+			}
+			
+			if (fitnessWithFaultTolerance < fitnessSwitchBaseStation) {
+				finalExeTime = faultToleranceTime;
+				finalEnergy = faultToleranceEnergy;
+			} else {
+				finalExeTime = switchBaseStationTime;
+				finalEnergy = switchBaseStationEnergy;
 			}
 		}
 		
@@ -880,22 +896,6 @@ public class GeneAlg {
 		}
 		
 		return faultToleranceEnergy;
-	}
-
-	/**
-	 * 用户移动位置处理
-	 */
-	private void locationManagment() {
-		//先根据用户走过的位置生成一条轨迹，每次开始卸载组件时确定用户的位置
-		
-		//用户首先肯定是从第一个位置开始，执行完一个组件，发送消息查询用户当前位置（即第i个位置）
-		
-	}
-	//
-	public void getLocation() {
-		Random random = new Random();
-		int locIndex = random.nextInt(2);
-		//获得该位置的信息（主要是数据传输速率）
 	}
 	
 	public double[] calThreePhraseTime(Component c,int i, int currentLoc) {
