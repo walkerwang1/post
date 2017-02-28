@@ -5,7 +5,7 @@
 #define TASKNUM 13		//节点数
 #define TIMEDELAYNUM 4		//截止时间个数
 
-typedef struct Task {	//任务
+typedef struct Task {	
 	double comp_cloud;			//云端计算时间
 	double comp_mobile;			//移动端计算时间
 	double earliest_start_time;	//最早开始时间
@@ -16,11 +16,12 @@ typedef struct Task {	//任务
 	
 	struct Task *next; 	//孩子节点
 	struct Task *parent;	//父节点
-}Task;
+}Task;	//任务
 
-typedef struct PCP {	//部分关键路径
-	
-}PCP;
+typedef struct PCPList {	
+	int value;
+	struct PCP *next;	
+}PCPList;	//部分关键路径，线性链表
 
 //-------函数声明-------
 void initInputFile();
@@ -38,12 +39,14 @@ double calCompEnergy(int n);
 double calTransferTime(int i, int j);
 double calTransferTime(int i, int j);
 void printESTandLFT();
+void scheduleParents(int n);
 
 double **transferData;		//任务之间传输的数据大小
 double *workload;			//每个任务的工作负载
 double *timedelay;		//截止时间
 
 Task *task;
+PCPList *pcpHead = NULL;
 
 double send_power = 0.1;		//W
 double receive_power = 0.05;		//W
@@ -238,12 +241,110 @@ double calTransferTime(int i, int j)
 	return transfer_time;
 }
 
-/*
 //从节点n开始调度
-void scheduleParents(int n) 
+void scheduleParents(int v, int Td) 
+{
+	int i =0;
+	int isUnscheduledParent = isisUnscheduledParent(v);	//1-表示v有未调度的父亲
+	while (isUnscheduledParent)
+	{
+		PCP.add(v);	//头插法，（注意PCP链表中的调用顺序）
+		int u = v;
+		
+		int *ret;
+		//节点n的父亲
+		int len = findParentSet(&ret, v, Td);
+		i = 0;
+		while(i < len)
+		{
+			int parent = ret[i];
+			//若节点n存在父节点没有被调度
+			if(task[parent]isScheduled == 0) 
+			{
+				//找到u的未被调度的关键父节点
+				int w = findCriticalParentUnscheduled(u);
+				
+				PCP.add(w);	
+				u = w;
+			}
+			i++;
+		}
+		
+		//u是PCP路径上的倒数第二个节点，找到u的已经调度的关键父节点，此时构成了一条PCP路径
+		int parent_of_u = findCriticalParentScheduled(u);
+		
+		//开始调度PCP路径上的每一个节点
+		schedulePath(PCP);
+		
+		updateEST();
+		
+		updateLFT();
+		
+		for(i = 0; i < PCP.length; i++)
+		{
+			scheduleParents(PCP[i], Td);
+		}
+	}
+}
+
+//找到u的已经调度的关键父节点
+int findCriticalParentUnscheduled(int u)
+{
+	return 0;
+}
+
+//找到u的未被调度的关键父节点
+int findCriticalParentScheduled(int u)
+{
+	return 0;
+}
+
+//调度PCP关键路径上的每一个节点
+void schedulePath(PCP)
 {
 	
 }
+
+
+//更新任务的最早开始时间
+void updateEST() 
+{
+	
+}
+
+//更新任务的最晚结束时间
+void updateLFT()
+{
+	
+}
+
+//将节点n添加到PCP路径中(头插法)
+void addTaskToPCP(int n)
+{
+	PCPList *p = (PCPList *)malloc(sizeof(PCPList));
+	p->value = n;
+	if(pcpHead->next != NULL)
+	{
+		p->next = pcpHead->next;
+		head->next = p;
+		p->next = NULL;
+	} 
+	else
+	{
+		pcpHead.next = p;
+		p->next = NULL;
+	}
+}
+
+//初始化PCPList链表，只有头节点
+void InitPCPList(PCPList **pcpHead) 
+{
+	(*pcpHead) = (PCPList *)malloc(sizeof(PCPList));
+	(*pcpHead)->next = NULL;
+}
+
+/*
+
 
 //节点n的计算能耗
 double calCompEnergy(int n) 
@@ -283,17 +384,6 @@ double calTransferEnergy(int i, int j)
 }
 */
 
-//更新任务的最早开始时间
-void updateEST() 
-{
-	
-}
-
-//更新任务的最晚结束时间
-void updateLFT()
-{
-	
-}
 
 //读取输入信息
 void initInputFile() 
