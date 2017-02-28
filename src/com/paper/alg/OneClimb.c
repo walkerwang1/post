@@ -37,6 +37,7 @@ double calCompTime(int n);
 double calCompEnergy(int n);
 double calTransferTime(int i, int j);
 double calTransferTime(int i, int j);
+void printESTandLFT();
 
 double **transferData;		//任务之间传输的数据大小
 double *workload;			//每个任务的工作负载
@@ -82,6 +83,8 @@ void calESTandLFT(double Td)
 	initExeLoc();
 	
 	calEST(Td);
+	printESTandLFT();	
+
 	//calLFT(Td);
 	
 	//每个任务的计算时间
@@ -91,7 +94,7 @@ void calESTandLFT(double Td)
 void initExeLoc() 
 {
 	int i;
-	for(i = 0; i < TASKNUM; i++)
+	for(i = 1; i < TASKNUM-1; i++)
 	{
 		task[i].exeLoc = 1;
 	}
@@ -104,7 +107,7 @@ void parentAndChild()
 	int i, j;
 	for(i = 0; i < TASKNUM; i++)
 	{
-		for(j = 0; j < TASKNUM; j++) 
+		for(j = i; j < TASKNUM; j++) 
 		{
 			if(transferData[i][j] > 0) 
 			{
@@ -121,10 +124,11 @@ void calEST(double Td)
 	task[0].earliest_start_time = 0;
 	int i, j;
 	int *ret;
-	double maxEarlistStartTime = 0;
+	double maxEarliestStartTime;
 	//计算节点1~12的最早开始时间
 	for(i = 1; i < TASKNUM; i++) 
 	{
+		maxEarliestStartTime = 0;
 		int len = findParentSet(&ret, i, Td);
 		for(j = 0; j < len; j++)
 		{
@@ -132,12 +136,12 @@ void calEST(double Td)
 			double comp_time = calCompTime(pre);
 			double transfer_time = calTransferTime(pre, i);
 			double time = task[pre].earliest_start_time + comp_time + transfer_time;
-			if(time > maxEarlistStartTime)
+			if(time > maxEarliestStartTime)
 			{
-				maxEarlistStartTime = time;
+				maxEarliestStartTime = time;
 			}
 		}
-		task[i].earliest_start_time = maxEarlistStartTime;
+		task[i].earliest_start_time = maxEarliestStartTime;
 	}
 }
 
@@ -146,13 +150,14 @@ int findParentSet(int **ret, int n, double Td)
 {
 	int i; 
 	int count = 0;
+	*ret = (int *)malloc(sizeof(int));		//分配内存空间，长度位32
 	for(i = 0; i < TASKNUM; i++) 
 	{
 		
-		if(task[n].parent == &task[i])
+		//if(task[n].parent == &task[i])
+		if(transferData[i][n] > 0)		
 		{
-			ret[count] = (int *)malloc(sizeof(int));
-			*ret[count++] = i;
+			(*ret)[count++] = i;
 		}
 	}
 	return count;
@@ -345,6 +350,15 @@ void initInputFile()
 	}
 	
 	fclose(fp_file);
+}
+
+void printESTandLFT()
+{
+	int i;
+	for(i = 0; i < TASKNUM; i++)
+	{
+		printf("%d : EST:%.5f\n", i, task[i].earliest_start_time);
+	}
 }
 
 //输出信息
