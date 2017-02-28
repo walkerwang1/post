@@ -46,7 +46,7 @@ double *timedelay;		//截止时间
 Task *task;
 
 double send_power = 0.1;		//W
-double receive_power = 0.05;	//W
+double receive_power = 0.05;		//W
 double comp_power = 0.5;		//W
 double idle_power = 0.001;		//W
 double mobile_frequency = 500;	//MHz
@@ -60,17 +60,18 @@ int main()
 	printInputFile();
 	
 	int i;
+	//将任务0和12设置为已经调度
 	task[0].isScheduled = 1;
 	task[TASKNUM-1].isScheduled = 1;
 	for(i = 0; i < TIMEDELAYNUM - 3; i++)	//先只考虑截止时间为 0.6s
 	{
 		double Td = timedelay[i];	//截止时间Td
-		printf("----------------------------------------\n");
+		printf("--------------------------------------------\n");
 		printf("delay deadline:%.1f\n", Td);
 
 		calESTandLFT(Td);
 		
-		//scheduleParents(TASKNUM-1);	  //从最后一个节点开始调度	
+		scheduleParents(TASKNUM-1);	  //从最后一个节点开始调度	
 	}
 	return 0;
 }
@@ -82,12 +83,10 @@ void calESTandLFT(double Td)
 	//假设所有任务都在云端执行
 	initExeLoc();
 	
-	calEST(Td);
-	printESTandLFT();	
-
-	//calLFT(Td);
-	
-	//每个任务的计算时间
+	calEST(Td);		//最早开始时间EST
+	calLFT(Td);		//最晚结束时间LFT
+	//输出EST和LFT
+	//printESTandLFT();	
 }
 
 //计算EST和LFT任务的执行位置
@@ -145,17 +144,61 @@ void calEST(double Td)
 	}
 }
 
+
+//计算任务0~11的最晚结束时间
+void calLFT(double Td)
+{
+	int i, j;
+	int *ret;
+	task[TASKNUM-1].lastest_finish_time = Td;
+	double minLastestFinishTime;
+	//计算节点1~12的最早开始时间
+	for(i = TASKNUM - 2; i >= 0; i--) 
+	{
+		minLastestFinishTime = 100;
+		int len = findChildSet(&ret, i, Td);
+		for(j = 0; j < len; j++)
+		{
+			int succ = ret[j];		//节点i的后继节点的下标
+			double comp_time = calCompTime(succ);
+			double transfer_time = calTransferTime(i, succ);
+			double time = task[succ].lastest_finish_time - comp_time - transfer_time;
+			if(time < minLastestFinishTime)
+			{
+				minLastestFinishTime = time;
+			}
+		}
+		task[i].lastest_finish_time = minLastestFinishTime;
+	}
+}
+
 //找到n的直接前驱节点
 int findParentSet(int **ret, int n, double Td)
 {
 	int i; 
 	int count = 0;
-	*ret = (int *)malloc(sizeof(int));		//分配内存空间，长度位32
+	*ret = (int *)malloc(sizeof(int));	
 	for(i = 0; i < TASKNUM; i++) 
 	{
 		
-		//if(task[n].parent == &task[i])
 		if(transferData[i][n] > 0)		
+		{
+			(*ret)[count++] = i;
+		}
+	}
+	return count;
+}
+
+
+//找到n的直接后继节点
+int findChildSet(int **ret, int n, double Td) 
+{
+	int i;
+	*ret = (int *)malloc(sizeof(int));
+	int count = 0;
+	for(i = 0; i < TASKNUM; i++) 
+	{
+		if(transferData[n][i] > 0)
 		{
 			(*ret)[count++] = i;
 		}
@@ -202,37 +245,6 @@ void scheduleParents(int n)
 	
 }
 
-
-
-//计算任务1~11的最晚结束时间
-void calLFT(double Td)
-{
-	int i, j;
-	int *ret;
-	task[12].lastest_finish_time = Td;
-	double minLastestFinishTime = 0;
-	//计算节点1~12的最早开始时间
-	for(i = TASKNUM - 2; i < 0; i--) 
-	{
-		int len = findChildSet(&ret, i, Td);
-		for(j = 0; j < len; j++)
-		{
-			int succ = ret[j];		//节点i的后继节点的下标
-			double comp_time = calCompTime(succ);
-			double transfer_time = calTransferTime(succ, i);
-			double time = task[succ].lastest_finish_time - comp_time - transfer_time;
-			if(time < minLastestFinishTime)
-			{
-				minLastestFinishTime = time;
-			}
-		}
-		task[i].lastest_finish_time = minLastestFinishTime;
-	}
-}
-
-
-
-
 //节点n的计算能耗
 double calCompEnergy(int n) 
 {
@@ -249,8 +261,6 @@ double calCompEnergy(int n)
 	}
 	return comp_energy;
 }
-
-
 
 //节点i和j之间的传输能耗
 double calTransferEnergy(int i, int j)
@@ -271,29 +281,6 @@ double calTransferEnergy(int i, int j)
 	}
 	return transfer_energy;
 }
-
-
-
-
-
-
-//找到n的直接后继节点
-int findChildSet(int **ret, int n, double Td) 
-{
-	int i;
-	*ret = (int *)malloc(sizeof(int));
-	int count = 0;
-	for(i = 0; i < TASKNUM; i++) 
-	{
-		if(task[n].next = &task[i])
-		{
-			*ret[count++] = i;
-		}
-	}
-	return count;
-}
-
-
 */
 
 //更新任务的最早开始时间
@@ -352,12 +339,13 @@ void initInputFile()
 	fclose(fp_file);
 }
 
+//输出最早完成时间和最晚开始时间
 void printESTandLFT()
 {
 	int i;
 	for(i = 0; i < TASKNUM; i++)
 	{
-		printf("%d : EST:%.5f\n", i, task[i].earliest_start_time);
+		printf("%2d : EST:%.5f    LFT:%.5f\n", i, task[i].earliest_start_time, task[i].lastest_finish_time);
 	}
 }
 
