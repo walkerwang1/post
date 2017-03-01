@@ -20,10 +20,10 @@ typedef struct Task {
 
 typedef struct PCPList {	
 	int value;
-	struct PCP *next;	
+	struct PCPList *next;	
 }PCPList;	//部分关键路径，线性链表
 
-//-------函数声明-------
+//--------------函数声明--------------
 void initInputFile();
 void printInputFile();
 void calESTandLFT(double Td);
@@ -39,33 +39,41 @@ double calCompEnergy(int n);
 double calTransferTime(int i, int j);
 double calTransferTime(int i, int j);
 void printESTandLFT();
-void scheduleParents(int n);
+void scheduleParents(int n, double Td);
+int isUnscheduledParent(int v);
+void initPCPList(PCPList **pcpHead);
+void addTaskToPCP(int n);
+int findCriticalParentScheduled(int u);
+int findCriticalParentUnscheduled(int u);
+void printPCP(PCPList *pcpHead);
 
 double **transferData;		//任务之间传输的数据大小
-double *workload;			//每个任务的工作负载
+double *workload;		//每个任务的工作负载
 double *timedelay;		//截止时间
 
 Task *task;
-PCPList *pcpHead = NULL;
+PCPList *pcpHead = NULL;	//PCP路径链表的头节点
+PCPList *pcpRear;		//PCP路径链表的尾节点
 
 double send_power = 0.1;		//W
 double receive_power = 0.05;		//W
 double comp_power = 0.5;		//W
 double idle_power = 0.001;		//W
-double mobile_frequency = 500;	//MHz
-double cloud_frequency = 3000;	//MHz
+double mobile_frequency = 500;		//MHz
+double cloud_frequency = 3000;		//MHz
 
 double bandwidth = 50;		//网络传输速率
 
 int main() 
 {
 	initInputFile();
-	printInputFile();
+	//printInputFile();
 	
 	int i;
 	//将任务0和12设置为已经调度
 	task[0].isScheduled = 1;
 	task[TASKNUM-1].isScheduled = 1;
+	printInputFile();
 	for(i = 0; i < TIMEDELAYNUM - 3; i++)	//先只考虑截止时间为 0.6s
 	{
 		double Td = timedelay[i];	//截止时间Td
@@ -74,7 +82,7 @@ int main()
 
 		calESTandLFT(Td);
 		
-		scheduleParents(TASKNUM-1);	  //从最后一个节点开始调度	
+		scheduleParents(TASKNUM-1, Td);	  //从最后一个节点开始调度	
 	}
 	return 0;
 }
@@ -89,7 +97,7 @@ void calESTandLFT(double Td)
 	calEST(Td);		//最早开始时间EST
 	calLFT(Td);		//最晚结束时间LFT
 	//输出EST和LFT
-	//printESTandLFT();	
+	printESTandLFT();	
 }
 
 //计算EST和LFT任务的执行位置
@@ -242,67 +250,134 @@ double calTransferTime(int i, int j)
 }
 
 //从节点n开始调度
-void scheduleParents(int v, int Td) 
+void scheduleParents(int v, double Td) 
 {
 	int i =0;
-	int isUnscheduledParent = isisUnscheduledParent(v);	//1-表示v有未调度的父亲
-	while (isUnscheduledParent)
+	//初始化PCP链表
+	initPCPList(&pcpHead);	
+	//1-表示v有未调度的父亲
+	while (isUnscheduledParent(v) == 1)
 	{
-		PCP.add(v);	//头插法，（注意PCP链表中的调用顺序）
+		addTaskToPCP(v);	//尾插法，（注意PCP链表中的调用顺序）
 		int u = v;
 		
-		int *ret;
-		//节点n的父亲
-		int len = findParentSet(&ret, v, Td);
-		i = 0;
-		while(i < len)
+		while(isUnscheduledParent(u) == 1)
 		{
-			int parent = ret[i];
-			//若节点n存在父节点没有被调度
-			if(task[parent]isScheduled == 0) 
-			{
 				//找到u的未被调度的关键父节点
 				int w = findCriticalParentUnscheduled(u);
 				
-				PCP.add(w);	
+				//找到u的关键父节点，并将其设置为“已调度”
+				task[w].isScheduled = 1;
+				
+				addTaskToPCP(w);
 				u = w;
-			}
-			i++;
 		}
 		
 		//u是PCP路径上的倒数第二个节点，找到u的已经调度的关键父节点，此时构成了一条PCP路径
-		int parent_of_u = findCriticalParentScheduled(u);
+		int scheduled_parent = findCriticalParentScheduled(u);
+		addTaskToPCP(scheduled_parent);
+		//-------至此，一条PCP路径就构成---------
 		
+		//打印PCP路径上包含的节点(to this, correct)
+		printPCP(pcpHead);	
+		
+		/*
 		//开始调度PCP路径上的每一个节点
-		schedulePath(PCP);
+		schedulePath(pcpHead);		//pcpHead为PCP路径链表的头节点
 		
+		//更新之前打印PCP上每个任务的卸载位置（*）
+		//PCP(12-11-9-6-3-1-0)  6,9,10,10在云端1；其他的都在移动端执行
 		updateEST();
 		
 		updateLFT();
 		
-		for(i = 0; i < PCP.length; i++)
+		//PCP路径上每一个节点依次调用scheduleParents
+		PCPList *p = pcpHead->next;
+		PCPList *q = NULL;	
+		while(p != NULL)
 		{
-			scheduleParents(PCP[i], Td);
-		}
+			scheduleParents(p->value, Td);
+			q = p;
+			p = p->next;
+			free(q);
+		}	
+		*/
 	}
 }
 
-//找到u的已经调度的关键父节点
-int findCriticalParentUnscheduled(int u)
+//判断v是否有未调度的父节点(1-表示有未调度的)
+int isUnscheduledParent(int v)
 {
+	int i;
+	int *ret;
+	int len = findParentSet(&ret, v, 0);
+	for(i = 0; i < len; i++)
+	{
+		int parent = ret[i];
+		if(task[parent].isScheduled == 0)	//i没有被调度
+		{
+			return 1;
+		}
+	}
 	return 0;
 }
 
-//找到u的未被调度的关键父节点
+//找到u的未调度的关键父节点（根据EST）
+int findCriticalParentUnscheduled(int u)
+{
+	int i;
+	int *ret;
+	double maxEST = -1;
+	int index;		//存放关键父节点的id
+	int len = findParentSet(&ret, u, 0);
+	for(i = 0; i < len; i++)
+	{
+		int parent = ret[i];	//节点u的父节点的id
+		
+		//父节点没有被调度，并找到critical parent
+		if(task[parent].isScheduled == 0)
+		{
+			if(task[parent].earliest_start_time > maxEST)
+			{
+				maxEST = task[parent].earliest_start_time;
+				index = parent;
+			}
+		}
+	}
+	return index;
+}
+
+//找到u的已经被调度的关键父节点
 int findCriticalParentScheduled(int u)
 {
-	return 0;
+	int i;
+	int *ret;
+	double maxEST = -1;
+	int index;		//存放关键父节点的id
+	int len = findParentSet(&ret, u, 0);
+	for(i = 0; i < len; i++)
+	{
+		int parent = ret[i];	//节点u的父节点的id
+		
+		//父节点已经被调度，并找到critical parent
+		if(task[parent].isScheduled == 1)
+		{
+			if(task[parent].earliest_start_time > maxEST)
+			{
+				maxEST = task[parent].earliest_start_time;
+				index = parent;
+			}
+		}
+	}
+	return index;
 }
 
 //调度PCP关键路径上的每一个节点
 void schedulePath(PCP)
 {
-	
+	//12-11-9-6-3-1-0，有点不太合理，看是否需要调整为“双向链表”
+	int last  = pcpHead->value;		//PCP最后一个节点
+	int first = pcpRear->value;		//PCP第一个节点
 }
 
 
@@ -318,29 +393,31 @@ void updateLFT()
 	
 }
 
-//将节点n添加到PCP路径中(头插法)
+//将节点n添加到PCP路径中(尾插法)
 void addTaskToPCP(int n)
 {
 	PCPList *p = (PCPList *)malloc(sizeof(PCPList));
 	p->value = n;
 	if(pcpHead->next != NULL)
 	{
-		p->next = pcpHead->next;
-		head->next = p;
-		p->next = NULL;
+		pcpRear->next = p;
+		pcpRear = p;
 	} 
 	else
 	{
-		pcpHead.next = p;
-		p->next = NULL;
+		pcpHead->next = p;
+		pcpRear = p;
 	}
+	pcpRear->next = NULL;
 }
 
 //初始化PCPList链表，只有头节点
-void InitPCPList(PCPList **pcpHead) 
+void initPCPList(PCPList **pcpHead) 
 {
 	(*pcpHead) = (PCPList *)malloc(sizeof(PCPList));
 	(*pcpHead)->next = NULL;
+	pcpRear = (*pcpHead);
+	pcpRear->next = NULL;
 }
 
 /*
@@ -425,6 +502,10 @@ void initInputFile()
 	{
 		task[i].workload = workload[i];
 	}
+	for(i = 0; i < TASKNUM; i++)
+	{
+		task[i].isScheduled = 0;
+	}
 	
 	fclose(fp_file);
 }
@@ -437,6 +518,19 @@ void printESTandLFT()
 	{
 		printf("%2d : EST:%.5f    LFT:%.5f\n", i, task[i].earliest_start_time, task[i].lastest_finish_time);
 	}
+}
+
+//打印PCP部分关键路径
+void printPCP(PCPList *pcpHead)
+{
+	PCPList *p = pcpHead->next;
+	printf("PCP路径为：");
+	while(p != NULL) 
+	{
+		printf("%d  ", p->value);
+		p = p->next;
+	}
+	printf("\n");
 }
 
 //输出信息
@@ -462,6 +556,11 @@ void printInputFile()
 	for(i = 0; i < TIMEDELAYNUM; i++) 
 	{
 		printf("%.1f\t", timedelay[i]);
+	}
+	printf("\n");
+	for(i = 0; i < TASKNUM; i++)
+	{
+		printf("%d\t", task[i].isScheduled);
 	}
 	printf("\n");
 }
