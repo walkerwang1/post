@@ -20,7 +20,8 @@ typedef struct Task {
 
 typedef struct PCPList {	
 	int value;
-	struct PCPList *next;	
+	struct PCPList *next;
+	struct PCPList *pre;
 }PCPList;	//部分关键路径，线性链表
 
 //--------------函数声明--------------
@@ -46,6 +47,12 @@ void addTaskToPCP(int n);
 int findCriticalParentScheduled(int u);
 int findCriticalParentUnscheduled(int u);
 void printPCP(PCPList *pcpHead);
+void schedulePath(PCPList *pcpHead);
+double allTaskExeOnMobile(PCPList *pcpHead, int first, int last, double sub_deadline);
+double oneMigrationToCloud(PCPList *pcpHead, int first, int last, double sub_deadline);
+double calOneMigrationEnergy(PCPList *pcpHead, int first, int last, int n);
+int findLastPCP(PCPList *pcpHead);
+double calTransferEnergy(int i, int j);
 
 double **transferData;		//任务之间传输的数据大小
 double *workload;		//每个任务的工作负载
@@ -54,6 +61,8 @@ double *timedelay;		//截止时间
 Task *task;
 PCPList *pcpHead = NULL;	//PCP路径链表的头节点
 PCPList *pcpRear;		//PCP路径链表的尾节点
+
+int startMigrationID = 0;		//记录第一次开始迁移的任务id
 
 double send_power = 0.1;		//W
 double receive_power = 0.05;		//W
@@ -73,7 +82,7 @@ int main()
 	//将任务0和12设置为已经调度
 	task[0].isScheduled = 1;
 	task[TASKNUM-1].isScheduled = 1;
-	printInputFile();
+	//printInputFile();
 	for(i = 0; i < TIMEDELAYNUM - 3; i++)	//先只考虑截止时间为 0.6s
 	{
 		double Td = timedelay[i];	//截止时间Td
@@ -95,7 +104,7 @@ void calESTandLFT(double Td)
 	initExeLoc();
 	
 	calEST(Td);		//最早开始时间EST
-	calLFT(Td);		//最晚结束时间LFT
+	calLFT(Td);		//最晚结束时间LFTvoid schedulePath(PCPList *pcpHead)
 	//输出EST和LFT
 	printESTandLFT();	
 }
@@ -266,8 +275,7 @@ void scheduleParents(int v, double Td)
 				//找到u的未被调度的关键父节点
 				int w = findCriticalParentUnscheduled(u);
 				
-				//找到u的关键父节点，并将其设置为“已调度”
-				task[w].isScheduled = 1;
+				
 				
 				addTaskToPCP(w);
 				u = w;
@@ -281,10 +289,11 @@ void scheduleParents(int v, double Td)
 		//打印PCP路径上包含的节点(to this, correct)
 		printPCP(pcpHead);	
 		
-		/*
+		
 		//开始调度PCP路径上的每一个节点
 		schedulePath(pcpHead);		//pcpHead为PCP路径链表的头节点
 		
+/*
 		//更新之前打印PCP上每个任务的卸载位置（*）
 		//PCP(12-11-9-6-3-1-0)  6,9,10,10在云端1；其他的都在移动端执行
 		updateEST();
@@ -372,14 +381,214 @@ int findCriticalParentScheduled(int u)
 	return index;
 }
 
-//调度PCP关键路径上的每一个节点
-void schedulePath(PCP)
+//调度PCP关键路径上的每一个节点(Alg 3)
+void schedulePath(PCPList *pcpHead)
 {
-	//12-11-9-6-3-1-0，有点不太合理，看是否需要调整为“双向链表”
-	int last  = pcpHead->value;		//PCP最后一个节点
-	int first = pcpRear->value;		//PCP第一个节点
+	//12-11-9-6-3-1-0
+	int first  = pcpHead->value;		//PCP第一个节点
+	int last = findLastPCP(pcpHead);		//PCP最后一个节点
+	//printf("first node:%d;\t last node:%d\n", first, last);
+	
+	//子截止时间
+	double sub_deadline = task[last].lastest_finish_time - task[first].earliest_start_time;
+	
+	int firstExeLoc = task[first].exeLoc;
+	int  lastExeLoc = task[last].exeLoc;
+	if(firstExeLoc == 0 && lastExeLoc == 0)
+	{
+		//1.所有任务都在本地执行
+		double energy_all_mobile = allTaskExeOnMobile(pcpHead, first, last, sub_deadline);
+
+		printf("energy_all_mobile:%.5f\n", energy_all_mobile);		//0.149 (correct)
+
+		//2.从移动端迁移一次到云端
+		double energy_one_migration_cloud = oneMigrationToCloud(pcpHead, first, last, sub_deadline);
+	/*	
+		//表明所有任务在本地执行更优
+		if(energy_all_mobile <= energy_one_migration_cloud)
+		{
+			PCPList *p = pcpHead->next;
+			while(p != NULL)
+			{
+				if(p->value != first && p->value != last)
+				{
+					task[p->value].exeLoc = 0;
+				}
+				p = p->next;
+			}
+		}
+		else	//表明一次迁移到云端更优
+		{
+			//startMigrationID表示从哪个节点开始卸载
+			PCPList *p = pcpHead->next;
+			while(p != NULL) 
+			{
+				if(p->value != first && p->value != last)
+				{
+					if(p->value < startMigrationID)
+						task[p->value].exeLoc = 0;
+					else
+						task[p->value].exeLoc = 1;
+				}
+				p = p->next;
+			}
+		}
+*/
+	}
+	//设置first+1到last-1中的某一个任务迁移到云端
+	else if(firstExeLoc == 0 && lastExeLoc == 1)
+	{
+		
+	}
+	else if(firstExeLoc ==1 && lastExeLoc == 0)
+	{
+		
+	}
+	else	//first和last都在云端执行，则所有节点都在云端执行
+	{
+		PCPList *p = pcpHead->next;
+		while(p != NULL) 
+		{
+			if(p->value != first && p->value != last)
+			{
+				task[p->value].exeLoc = 1;
+			}
+			p = p->next;
+		}
+	}
+	
+	//将PCP路径上的节点设置为“已调度”
+	PCPList *p = pcpHead->next;
+	int w = 0;
+	while(p != NULL)
+	{
+		w = p->value;
+		
+		task[w].isScheduled = 1;
+		p = p->next;
+	}
+	
+	//Update X：将PCP上的节点都确定其执行位置exeLoc
+	
 }
 
+//所有组件都在移动端执行
+double allTaskExeOnMobile(PCPList *pcpHead, int first, int last, double sub_deadline)
+{
+	int i;
+	double energy_all_mobile = 0;
+	
+	//假设
+	PCPList *p = pcpHead->next;
+	while(p != NULL)
+	{
+		if(p->value != first && p->value != last )
+		{
+			//设置所有任务都在移动端执行
+			task[p->value].exeLoc = 0;
+		}
+		p = p->next;
+	}
+	
+	//计算该卸载方式下的能耗
+	p = pcpHead->next;
+	while(p != NULL)
+	{
+		int n = p->value;
+		double comp_energy = calCompEnergy(n);
+		double transfer_energy = 0;
+		if(p->pre != NULL)
+		{
+			transfer_energy = calTransferEnergy(p->pre->value, n);
+		}
+		energy_all_mobile += comp_energy;
+		energy_all_mobile += transfer_energy;
+
+		p = p->next;
+	}
+	
+	//清楚task中的假设执行位置
+	p = pcpHead->next;
+	while(p != NULL)
+	{
+		if(p->value != first && p->value != last)
+		{
+			task[p->value].exeLoc = 0;	
+		}
+		p = p->next;
+	}
+	return energy_all_mobile;
+}
+
+//从移动端迁移一次到云端，first和last的exeLoc的执行位置已知
+double oneMigrationToCloud(PCPList *pcpHead, int first, int last, double sub_deadline)
+{
+	//double energy_one_migration_cloud = 0;
+	double minExeEnergy = 1000;
+	startMigrationID = first + 1;
+	PCPList *p = pcpHead->next;
+	while(p != NULL) 
+	{
+		double exeEnergy = calOneMigrationEnergy(pcpHead, first, last, p->value);
+		if(exeEnergy < minExeEnergy)
+		{
+			minExeEnergy = exeEnergy;
+			startMigrationID = p->value;
+		}
+		p = p->next;
+	}
+	return minExeEnergy;
+}
+
+//从n开始卸载的能耗
+double calOneMigrationEnergy(PCPList *pcpHead, int first, int last, int n)
+{
+	double exeEnergy = 0;
+	PCPList *p = pcpHead->next;
+	while(p != NULL) 
+	{
+		if(p->value < n)	//从n开始卸载
+		{
+			task[p->value].exeLoc = 0;
+		}
+		else
+		{
+			task[p->value].exeLoc = 1;
+		}
+		
+		p = p->next;	
+	}
+	
+	//开始计算能耗
+	p = pcpHead->next;
+	while(p != NULL)
+	{
+		int n = p->value;
+		double comp_energy = calCompEnergy(n);
+		double transfer_energy = 0;
+		if(p->pre != NULL)
+		{
+			transfer_energy = calTransferEnergy(p->pre->value, n);
+		}
+		exeEnergy += comp_energy;
+		exeEnergy += transfer_energy;
+
+		p = p->next;
+	}
+	
+	//清除task中的假设执行位置
+	p = pcpHead->next;
+	while(p != NULL)
+	{
+		if(p->value != first && p->value != last)
+		{
+			task[p->value].exeLoc = 0;	
+		}
+
+		p = p->next;
+	}
+	return exeEnergy;
+}
 
 //更新任务的最早开始时间
 void updateEST() 
@@ -393,22 +602,35 @@ void updateLFT()
 	
 }
 
-//将节点n添加到PCP路径中(尾插法)
+//将节点n添加到PCP路径中(头插法)
 void addTaskToPCP(int n)
 {
 	PCPList *p = (PCPList *)malloc(sizeof(PCPList));
 	p->value = n;
 	if(pcpHead->next != NULL)
 	{
-		pcpRear->next = p;
-		pcpRear = p;
+		p->next = pcpHead->next;
+		pcpHead->next->pre = p;
+		pcpHead->next = p;
+		p->pre = pcpHead;
 	} 
 	else
 	{
 		pcpHead->next = p;
-		pcpRear = p;
+		p->pre = pcpHead;
+		p->next = NULL;
 	}
-	pcpRear->next = NULL;
+}
+
+//找到PCP最后一个节点
+int findLastPCP(PCPList *pcpHead)
+{
+	PCPList *p = pcpHead->next;
+	while(p->next != NULL)
+	{
+		p = p->next;
+	}
+	return p->value;
 }
 
 //初始化PCPList链表，只有头节点
@@ -416,11 +638,8 @@ void initPCPList(PCPList **pcpHead)
 {
 	(*pcpHead) = (PCPList *)malloc(sizeof(PCPList));
 	(*pcpHead)->next = NULL;
-	pcpRear = (*pcpHead);
-	pcpRear->next = NULL;
+	(*pcpHead)->pre = NULL;
 }
-
-/*
 
 
 //节点n的计算能耗
@@ -459,7 +678,6 @@ double calTransferEnergy(int i, int j)
 	}
 	return transfer_energy;
 }
-*/
 
 
 //读取输入信息
