@@ -57,7 +57,8 @@ double calTransferEnergy(int i, int j);
 void clearExeLoc();
 void updateEST(double Td);
 void updateLFT(double Td);
-int checkSubDeadline(PCPList *pcpHead, int n, double sub_deadline);
+int checkESTSubDeadline(PCPList *pcpHead, int n, double sub_deadline);
+int checkLFTSubDeadline(PCPList *pcpHead, int n, double sub_deadline);
 
 double **transferData;		//任务之间传输的数据大小
 double *workload;		//每个任务的工作负载
@@ -88,7 +89,7 @@ int main()
 	task[0].isScheduled = 1;
 	task[TASKNUM-1].isScheduled = 1;
 	//printInputFile();
-	for(i = 0; i < TIMEDELAYNUM; i++)	//先只考虑截止时间为 0.6s
+	for(i = 0; i < TIMEDELAYNUM - 3; i++)	//先只考虑截止时间为 0.6s
 	{
 		initInputFile();
 		task[0].isScheduled = 1;
@@ -299,13 +300,13 @@ void scheduleParents(int v, double Td)
 		
 		while(isUnscheduledParent(u) == 1)
 		{
-				//找到u的未被调度的关键父节点
-				int w = findCriticalParentUnscheduled(u);
-				
-				
-				
-				addTaskToPCP(w);
-				u = w;
+			//找到u的未被调度的关键父节点
+			int w = findCriticalParentUnscheduled(u);
+			
+			
+			
+			addTaskToPCP(w);
+			u = w;
 		}
 		
 		//u是PCP路径上的倒数第二个节点，找到u的已经调度的关键父节点，此时构成了一条PCP路径
@@ -320,14 +321,15 @@ void scheduleParents(int v, double Td)
 		//开始调度PCP路径上的每一个节点
 		schedulePath(pcpHead);		//pcpHead为PCP路径链表的头节点
 		
-
 		//更新之前打印PCP上每个任务的卸载位置（*）
 		updateEST(Td);
 
 		updateLFT(Td);		
 
 		printESTandLFT();
-		
+		break;
+	/*
+	
 		PCPList *last = pcpHead->next;
 		while(last->next != NULL) 
 		{
@@ -342,7 +344,8 @@ void scheduleParents(int v, double Td)
 			q = last;
 			last = last->pre;
 			free(q);
-		}	
+		}
+*/	
 	}
 }
 
@@ -427,6 +430,8 @@ void schedulePath(PCPList *pcpHead)
 	int  lastExeLoc = task[last].exeLoc;
 	if(firstExeLoc == 0 && lastExeLoc == 0)
 	{
+		printf("firstExeLoc ==0 && lastExeLoc == 0\n");
+
 		//1.所有任务都在本地执行
 		double energy_all_mobile = allTaskExeOnMobile(pcpHead, first, last, sub_deadline);
 
@@ -473,7 +478,7 @@ void schedulePath(PCPList *pcpHead)
 	//设置first+1到last-1中的某一个任务迁移到云端
 	else if(firstExeLoc == 0 && lastExeLoc == 1)
 	{
-		//printf("firstExeLoc == 0 && lastExeLoc == 1\n");
+		printf("firstExeLoc == 0 && lastExeLoc == 1\n");
 		//卸载某个任务到云端执行
 		double energy_one_migration_cloud = oneMigrationToCloud(pcpHead, first, last, sub_deadline);
 		
@@ -509,10 +514,11 @@ void schedulePath(PCPList *pcpHead)
 	}
 	else if(firstExeLoc ==1 && lastExeLoc == 0)
 	{
-		
+		printf("firstExeLoc ==1 && lastExeLoc == 0\n");
 	}
 	else	//first和last都在云端执行，则所有节点都在云端执行
 	{
+		printf("firstExeLoc ==1 && lastExeLoc == 1\n");
 		PCPList *p = pcpHead->next;
 		while(p != NULL) 
 		{
@@ -652,9 +658,10 @@ double calOneMigrationEnergy(PCPList *pcpHead, int first, int last, int n, doubl
 	}
 
 	//check the sub_deadline(1-overtime)
-	int checkId = checkSubDeadline(pcpHead, n, sub_deadline);
-	
-	if(checkId == 1)
+	int checkESTId = checkESTSubDeadline(pcpHead, n, sub_deadline);
+	int checkLSTId = checkLFTSubDeadline(pcpHead, n, sub_deadline);
+
+	if(checkESTId == 1 || checkLSTId == 1)
 	{
 		exeEnergy = 1000;
 	}
@@ -673,7 +680,7 @@ double calOneMigrationEnergy(PCPList *pcpHead, int first, int last, int n, doubl
 	return exeEnergy;
 }
 
-int checkSubDeadline(PCPList *pcpHead, int n, double sub_deadline)
+int checkESTSubDeadline(PCPList *pcpHead, int n, double sub_deadline)
 {
 	//n to cloud
 	double time_EST = 0;
@@ -694,9 +701,10 @@ int checkSubDeadline(PCPList *pcpHead, int n, double sub_deadline)
 	
 	//comp_time
 	p = pcpHead->next;
+	int last = findLastPCP(pcpHead);
 	while(p != NULL)
 	{
-		if(p->location == 0)
+		if(p->location == 0 && p->value != last)
 		{
 			comp_time += workload[p->value] / mobile_frequency;
 		}
@@ -725,12 +733,11 @@ int checkSubDeadline(PCPList *pcpHead, int n, double sub_deadline)
 	}
 	
 	int first = pcpHead->next->value;
-	int last = findLastPCP(pcpHead);
 	double firstEST = task[first].earliest_start_time;
-	double lastLFT = task[last].lastest_finish_time;
+
 	time_EST = firstEST + comp_time + transfer_time;
-	time_LFT = sub_deadline - comp_time - transfer_time;
-	if(time_EST > sub_deadline || time_LFT < 0)
+	
+	if(time_EST > sub_deadline)
 	{
 		return 1;
 	}
@@ -757,20 +764,44 @@ int checkLFTSubDeadline(PCPList *pcpHead, int n, double sub_deadline)
 	}
 	
 	//comp_time
-	p = pcpHead->next->next;
+	p = pcpHead->next;
+	int first = pcpHead->next->value;
 	while(p != NULL)
 	{
-		if(p->location == 0)
+		if(p->value != first)
 		{
-			comp_time += workload[p->value] / mobile_frequency;
-		}
-		else
-		{
-			comp_time += workload[p->value] / cloud_frequency;
+			if(p->location == 0)
+			{
+				comp_time += workload[p->value] / mobile_frequency;
+			}
+			else
+			{
+				comp_time += workload[p->value] / cloud_frequency;
+			}
 		}
 		p = p->next;
 	}
 
+	//transfer_time
+	p = pcpHead->next;
+	PCPList *pre = NULL;
+	while(p->next != NULL)
+	{
+		pre = p;
+		p = p->next;
+		if(pre->location != p->location)
+		{
+			transfer_time += transferData[pre->value][p->value] / bandwidth;
+		}	
+		else
+		{
+			transfer_time += 0;
+		}
+	}
+	
+	time_LFT = sub_deadline - comp_time - transfer_time;	
+	if(time_LFT < 0 )
+		return 1;
 	return 0;
 }
 
@@ -875,7 +906,7 @@ void initInputFile()
 	{
 		transferData[i] = (double *)malloc(sizeof(double)*TASKNUM);
 	}
-	fp_file = fopen("mesh.dat", "r");
+	fp_file = fopen("tree.dat", "r");
 	for (i = 0; i < TASKNUM; i++) 
 	{
 		for (j = 0; j < TASKNUM; j++) 
