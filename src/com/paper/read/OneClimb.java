@@ -1,4 +1,4 @@
-package com.paper.alg;
+package com.paper.read;
 
 public class OneClimb {
 

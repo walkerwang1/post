@@ -1,4 +1,4 @@
-package com.paper.alg;
+package com.paper.read;
 
 import java.io.BufferedReader;
 import java.io.File;
@@ -62,7 +62,7 @@ public class GeneAlg {
 	Map<Integer, Trajectory> trajectoryMap = new HashMap<>();
 	
 	
-	DecimalFormat df = new DecimalFormat("#.000");	//用户格式化数据，double输出保留三位小数
+	DecimalFormat df = new DecimalFormat("#.0000");	//用户格式化数据，double输出保留三位小数
 	
 	int currentLoc = 1;  	//记录用户当前所处位置
 	

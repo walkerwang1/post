@@ -89,7 +89,7 @@ int main()
 	task[0].isScheduled = 1;
 	task[TASKNUM-1].isScheduled = 1;
 	//printInputFile();
-	for(i = 0; i < TIMEDELAYNUM - 3; i++)	//先只考虑截止时间为 0.6s
+	for(i = 0; i < TIMEDELAYNUM; i++)	//先只考虑截止时间为 0.6s
 	{
 		initInputFile();
 		task[0].isScheduled = 1;
@@ -327,8 +327,8 @@ void scheduleParents(int v, double Td)
 		updateLFT(Td);		
 
 		printESTandLFT();
-		break;
-	/*
+		//break;
+	
 	
 		PCPList *last = pcpHead->next;
 		while(last->next != NULL) 
@@ -345,7 +345,7 @@ void scheduleParents(int v, double Td)
 			last = last->pre;
 			free(q);
 		}
-*/	
+	
 	}
 }
 
@@ -680,6 +680,7 @@ double calOneMigrationEnergy(PCPList *pcpHead, int first, int last, int n, doubl
 	return exeEnergy;
 }
 
+//检查最早开始时间是否满足要求（更新所有所有任务），即最后一个任务的EST是否大于sub_deadline
 int checkESTSubDeadline(PCPList *pcpHead, int n, double sub_deadline)
 {
 	//n to cloud
@@ -744,6 +745,7 @@ int checkESTSubDeadline(PCPList *pcpHead, int n, double sub_deadline)
 	return 0;
 }	
 
+//检查最晚结束时间是否满足要求，即第一个任务的LFT是否满足要求
 int checkLFTSubDeadline(PCPList *pcpHead, int n, double sub_deadline)
 {
 	//n to cloud
@@ -906,7 +908,7 @@ void initInputFile()
 	{
 		transferData[i] = (double *)malloc(sizeof(double)*TASKNUM);
 	}
-	fp_file = fopen("tree.dat", "r");
+	fp_file = fopen("mesh.dat", "r");
 	for (i = 0; i < TASKNUM; i++) 
 	{
 		for (j = 0; j < TASKNUM; j++) 
