@@ -25,7 +25,7 @@ public class WKCRO {
 	private static final int VM_NUM = 2;
 
 	// 改变组件个数，记得改变配置文件（组件之间的依赖关系）
-	private static final int COMPENENT_NUM = 2 + 2;
+	private static final int COMPENENT_NUM = 4 + 2;
 
 	// 用户数组，下标从1开始, [1, USER_NUM]
 	User[] users = new User[USER_NUM + 1];
@@ -127,7 +127,7 @@ public class WKCRO {
 	 */
 	public void printUsersResult () {
 		for(int i = 1; i <= USER_NUM; i++) {
-			System.out.println("\n用户" + i + "的迁移策略:");
+			System.out.print("\n用户" + i + "的迁移策略:");
 			StringBuilder sb = new StringBuilder();
 			for(int j = 1; j <= COMPENENT_NUM-2; j++) {
 				Map<Integer, Integer> structure = users[i].molecule.getStructure();
@@ -135,8 +135,8 @@ public class WKCRO {
 			}
 			System.out.println(sb.toString());
 			
-			System.out.println("时间:" + users[i].makespan);
-			System.out.println("能耗:" + users[i].power);
+			System.out.println("时间:" + Double.valueOf(df.format(users[i].makespan)));
+			System.out.println("能耗:" + Double.valueOf(users[i].power));
 			
 			int size = users[i].cloudList.size();
 			if (size != 0) {
@@ -640,8 +640,8 @@ public class WKCRO {
 	}
 
 	// CRO相关参数
-	int popSize = 4; // 种群大小
-	int maxIter = 10; // 最大迭代次数
+	int popSize = 16; // 种群大小
+	int maxIter = 100; // 最大迭代次数
 	double KELossRate = 0.3; // 能量损失率
 	double moleColl = 0.2; // 决策分子反应的参数
 
@@ -678,16 +678,16 @@ public class WKCRO {
 		//2.初始化分子的势能和动能
 		initKEAndPE(i, RT_min, ET);
 
-		printEAndT(ET);
+		//输出T_max,T_min,E_max,E_min
+//		printEAndT(ET);
 
-		System.out.println("---------初始分子种群-------");
+//		System.out.println("---------初始分子种群-------");
 //		printMoleculeList();
-		System.out.println();
 		Molecule minStructure = new Molecule();
 		
 		int currMoleculeSize = 0;
 		
-		//发送四种化学反应时，计算适应度函数也要考虑RT_min
+		//CRO迭代过程，计算适应度函数也要考虑RT_min
 		int iter = 1;
 		while (iter <= maxIter) {
 			
@@ -854,13 +854,13 @@ public class WKCRO {
 		for(int j = 0; j < moleculeList.size(); j++) {
 			Molecule molecule = moleculeList.get(j);
 			
-			Map<Integer, Integer> map = molecule.getStructure();
-			System.out.println(map);
+//			Map<Integer, Integer> map = molecule.getStructure();
+//			System.out.println(map);
 			
 			double makespan = compMakeSpan(i, molecule, RT_min);
 			double  power = compEnergy(i, molecule, RT_min);
 			
-			System.out.println("makespan:" + makespan + " ;;;;" + "power:" + power);
+//			System.out.println("makespan:" + makespan + " ;;;;" + "power:" + power);
 			
 			molecule.makespan = makespan;
 			molecule.power = power;
@@ -901,8 +901,8 @@ public class WKCRO {
 			double makespan = compMakeSpan(i, molecule, RT_min);
 			double power = compEnergy(i, molecule, RT_min);
 			
-			System.out.println(molecule.getStructure());
-			System.out.println("makespan:" + makespan + ";;;;"  + "power:" + power);
+//			System.out.println(molecule.getStructure());
+//			System.out.println("makespan:" + makespan + ";;;;"  + "power:" + power);
 			
 			double PE = compPE(i, molecule, ET, RT_min);
 			
@@ -922,7 +922,7 @@ public class WKCRO {
 			molecule.setKE(rand.nextDouble() * initKE);
 
 			//输出分子信息
-			printMolecule(molecule);
+//			printMolecule(molecule);
 		}
 	}
 	
