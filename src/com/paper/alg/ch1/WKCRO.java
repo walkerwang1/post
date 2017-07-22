@@ -927,7 +927,11 @@ public class WKCRO {
 		double PE = 0.8 * (molecule.makespan - T_min) / (T_max - T_min) + 
 				0.2 * (molecule.power - E_min) / (E_max - E_min);
 		
-//		double PE = (molecule.makespan - T_min) /(T_max - T_min);
+		//只考虑时间，只考虑能耗
+//		double PE = 0 * (molecule.makespan - T_min) / (T_max - T_min) + 
+//				1 * (molecule.power - E_min) / (E_max - E_min);
+		
+		
 				
 		//清空暂时存放数据的user[i]
 		users[i].clear();
