@@ -14,11 +14,6 @@ import java.util.Map;
 import java.util.Random;
 import java.util.Set;
 
-/*
- * 需修改的地方：
- * 1-时间的计算
- * 2-适应度计算（需要计算当代种群的最大值和最小值，并更新）
- */
 public class WKCRO {
 
 	private static final int USER_NUM = 5;
@@ -112,7 +107,7 @@ public class WKCRO {
 			
 			printVmsRT();
 			
-			System.out.println("-------------------------用户" + i + "-end------------------------");
+			System.out.println("-------------------------用户" + i + "-end------------------------\n");
 		}
 
 		System.out.println("----------------------------------------------------------");
@@ -641,7 +636,7 @@ public class WKCRO {
 
 	// CRO相关参数
 	int popSize = 16; // 种群大小
-	int maxIter = 100; // 最大迭代次数
+	int maxIter = 20; // 最大迭代次数
 	double KELossRate = 0.3; // 能量损失率
 	double moleColl = 0.2; // 决策分子反应的参数
 
@@ -673,8 +668,6 @@ public class WKCRO {
 
 		double[] ET = getEAndT(i, RT_min);
 		
-		System.out.println();
-		
 		//2.初始化分子的势能和动能
 		initKEAndPE(i, RT_min, ET);
 
@@ -698,7 +691,7 @@ public class WKCRO {
 			if (t > moleColl) { // 发生单分子反应
 				// 选择一个分子进行单分子反应。[0,moleculeList.size()-1]
 				Molecule s = moleculeList.get(randAToB(0, moleculeList.size()-1));
-				if (checkDecomp(s) && currMoleculeSize <= (int)(popSize*1.5)) { // 单分子分解反应
+				if (checkDecomp(s) ) { // 单分子分解反应
 					STATUS = decompose(i, s, ET, RT_min);
 					if (!STATUS) { // 分解失败
 						continue;
@@ -713,7 +706,7 @@ public class WKCRO {
 				while (s1.equals(s2)) {
 					s2 = moleculeList.get(randAToB(0, moleculeList.size()-1));
 				}
-				if (checkSynth(s1, s2) && currMoleculeSize >= (int)(popSize*0.8)) { // 分子合成
+				if (checkSynth(s1, s2)) { // 分子合成
 					STATUS = synthesis(i, s1, s2, ET, RT_min);
 					if (!STATUS) {
 						continue;
@@ -828,18 +821,6 @@ public class WKCRO {
 				j--;
 			}
 		}
-		
-		// 记录当前种群的最大值和最小值，然后计算适应度函数
-		/*// 该策略下势能PE和动能KE（适应度函数不能在这里计算）
-		double PE = compFitness(molecule);
-		molecule.setPE(PE);
-		sumPE += PE;
-		// 初始化动能，[0,1]
-		iKE = sumPE / popSize;
-		for (int i = 0; i < moleculeList.size(); i++) {
-			Molecule molecule = moleculeList.get(i);
-			molecule.KE = iKE;
-		}*/
 	}
 	
 	/*
@@ -958,6 +939,7 @@ public class WKCRO {
 	 */
 	public double compMakeSpan(int i, Molecule molecule, double RT_min) {
 		
+		//重要，users[i].cloudList是通用的，前面的迁移策略会对后面产生影响
 		users[i].cloudList = new LinkedList<>();
 		
 		users[i].component[0].ST = 0;
@@ -1302,26 +1284,5 @@ public class WKCRO {
 		minStructure.setPE(moleculeList.get(minIndex).getPE());
 
 		return minStructure;
-	}
-
-	/*
-	 * 适应度函数计算，即分子势能（需修改，传入Emax,Emin,Tmax,Tmin）
-	 */
-	public double compFitness(Molecule molecule) {
-		Map<Integer, Integer> m = molecule.getStructure();
-		StringBuilder sb = new StringBuilder();
-		for (int i = 0; i < COMPENENT_NUM; i++) {
-			int v = m.get(i);
-			sb.append(v);
-		}
-		int val = Integer.parseInt(sb.toString(), 2);
-
-		sb = new StringBuilder("");
-		for (int i = 0; i < COMPENENT_NUM; i++) {
-			sb.append(1);
-		}
-		int max = Integer.parseInt(sb.toString(), 2);
-
-		return val / Double.valueOf((max));
 	}
 }
