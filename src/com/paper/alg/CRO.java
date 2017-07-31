@@ -15,8 +15,8 @@ public class CRO {
 	int NUMBER = 7;
 
 	//CRO相关参数
-	int popSize = 30;		// 种群大小
-	int maxIter = 1000;		// 最大迭代次数
+	int popSize = 16;		// 种群大小
+	int maxIter = 50;		// 最大迭代次数
 	double KELossRate = 0.3;		// 能量损失率
 	double moleColl = 0.2;		// 决策分子反应的参数
 	
