@@ -474,7 +474,7 @@ public class WKCRO {
 					if ((line = br.readLine()) != null) {
 						String[] strs = line.split(" ");
 						users[i].bandWidth = Double.valueOf(strs[0]);
-						users[i].bandWidth = 8000;
+						users[i].bandWidth = 4000;
 //						System.out.println(users[i].bandWidth);
 					}
 				}
@@ -638,7 +638,7 @@ public class WKCRO {
 	}
 
 	// CRO相关参数
-	int popSize = 16; // 种群大小
+	int popSize = 100; // 种群大小
 	int maxIter = 100; // 最大迭代次数
 	double KELossRate = 0.3; // 能量损失率
 	double moleColl = 0.2; // 决策分子反应的参数
@@ -817,12 +817,12 @@ public class WKCRO {
 		for (int j = 1; j <= popSize; j++) {
 			// 随机产生一个分子
 			Molecule molecule = randomGenMolecule();
-
-			if (!moleculeList.contains(molecule)) {
+			moleculeList.add(molecule);
+			/*if (!moleculeList.contains(molecule)) {
 				moleculeList.add(molecule);
 			} else {
 				j--;
-			}
+			}*/
 		}
 	}
 	

@@ -1,4 +1,4 @@
-package com.paper.alg.ch1;
+package com.paper.alg.ch1_new.others;
 
 import java.io.BufferedReader;
 import java.io.File;

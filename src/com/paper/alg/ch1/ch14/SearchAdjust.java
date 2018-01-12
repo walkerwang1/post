@@ -474,7 +474,7 @@ public class SearchAdjust {
 					if ((line = br.readLine()) != null) {
 						String[] strs = line.split(" ");
 						users[i].bandWidth = Double.valueOf(strs[0]);
-						users[i].bandWidth = 1000;
+						users[i].bandWidth = 4000;
 //						System.out.println(users[i].bandWidth);
 					}
 				}

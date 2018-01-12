@@ -1,4 +1,4 @@
-package com.paper.alg.ch1;
+package com.paper.alg.ch1_new.ch16;
 
 import java.io.BufferedReader;
 import java.io.File;
@@ -14,10 +14,9 @@ import java.util.Map;
 import java.util.Random;
 import java.util.Set;
 
-public class WKCRO {
-
-	private static final int USER_NUM = 5;
-	private static final int VM_NUM = 2;
+public class SearchAdjust {
+	private static final int USER_NUM = 100;
+	private static final int VM_NUM = 50;
 
 	// 改变组件个数，记得改变配置文件（组件之间的依赖关系）
 	private static final int COMPENENT_NUM = 4 + 2;
@@ -29,7 +28,7 @@ public class WKCRO {
 	VM[] vms = new VM[VM_NUM + 1];
 
 	public static void main(String[] args) {
-		WKCRO wkcro = new WKCRO();
+		SearchAdjust wkcro = new SearchAdjust();
 		wkcro.run();
 	}
 
@@ -42,7 +41,8 @@ public class WKCRO {
 
 		
 		// 依次处理每个用户
-		for (int i = 1; i <= USER_NUM; i++) {
+//		for (int i = 1; i <= USER_NUM; i++) {
+		for(int i = USER_NUM; i >= 1; i--) {
 			
 			System.out.println("-------------------------用户" + i + "-start------------------------");
 			
@@ -78,6 +78,8 @@ public class WKCRO {
 			for(int j = 0; j < COMPENENT_NUM; j++ ) {
 				System.out.println("组件" + j + ":   ST:" + users[i].component[j].ST + ";   FT:" + users[i].component[j].FT);
 			}
+			
+			users[i].power = users[i].power / 1000;
 			
 			System.out.println("时间:" + users[i].makespan);
 			System.out.println("能耗:" + users[i].power);
@@ -393,11 +395,13 @@ public class WKCRO {
 		try {
 			for (int i = 1; i <= USER_NUM; i++) {
 
+				int filenum = i % 3 + 1;
+				
 				users[i] = new User();
 
-				URL dir = WKCRO.class.getResource(""); // file:/E:/workspace/post/bin/com/paper/alg/ch1/
+				URL dir = SearchAdjust.class.getResource(""); // file:/E:/workspace/post/bin/com/paper/alg/ch1/
 				// 用户i的配置文件
-				String filePath = dir.toString().substring(5) + "User" + i + ".txt";
+				String filePath = dir.toString().substring(5) + "User" + filenum + ".txt";
 				File file = new File(filePath);
 				if (file.exists() && file.isFile()) {
 					InputStreamReader isr = new InputStreamReader(new FileInputStream(file), "utf-8");
@@ -472,6 +476,7 @@ public class WKCRO {
 					if ((line = br.readLine()) != null) {
 						String[] strs = line.split(" ");
 						users[i].bandWidth = Double.valueOf(strs[0]);
+						users[i].bandWidth = 4000;
 //						System.out.println(users[i].bandWidth);
 					}
 				}
@@ -557,7 +562,7 @@ public class WKCRO {
 	/*
 	 * 虚拟机类
 	 */
-	public class VM {
+	class VM {
 		double RT;
 
 		public VM() {
@@ -567,7 +572,7 @@ public class WKCRO {
 	/**
 	 * 分子类
 	 */
-	public class Molecule {
+	class Molecule {
 		Map<Integer, Integer> structure; // 分子结构
 		double PE; // 分子势能
 		double KE; // 分子动能
@@ -656,91 +661,20 @@ public class WKCRO {
 	 * @parma RT_min: 用户i可最早开始执行任务的时间
 	 */
 	public Molecule cro(int i, double RT_min) {
-		Random rand = new Random();
-		initCROParam();
-
-		moleculeList = new LinkedList<>();
+		Molecule molecule = new Molecule();
 		
-		//1.初始化popSize个分子种群，并计算E_max,E_min,T_max,T_min
-		initMoleculePopulation(popSize, RT_min);
+		molecule.getStructure().put(0, 0);
+		molecule.getStructure().put(COMPENENT_NUM-1, 0);
+		for(int j = 1; j < COMPENENT_NUM-1; j++) {
+			if (j <= 2) {
+				molecule.getStructure().put(j, 0);
+			} else
+			molecule.getStructure().put(j,1);
+		}
 		
-		//printMoleculeList();
-
-		double[] ET = getEAndT(i, RT_min);
+//		compMakeSpan(i, molecule, RT_min);
 		
-		//2.初始化分子的势能和动能
-		initKEAndPE(i, RT_min, ET);
-
-		//输出T_max,T_min,E_max,E_min
-//		printEAndT(ET);
-
-//		System.out.println("---------初始分子种群-------");
-//		printMoleculeList();
-		Molecule minStructure = new Molecule();
-		
-		int currMoleculeSize = 0;
-		
-		//CRO迭代过程，计算适应度函数也要考虑RT_min
-		int iter = 1;
-		while (iter <= maxIter) {
-			
-			currMoleculeSize = moleculeList.size();
-			
-			boolean STATUS = false; // 判断化学反应是否发生成功
-			double t = rand.nextDouble();
-			if (t > moleColl) { // 发生单分子反应
-				// 选择一个分子进行单分子反应。[0,moleculeList.size()-1]
-				Molecule s = moleculeList.get(randAToB(0, moleculeList.size()-1));
-				if (checkDecomp(s) ) { // 单分子分解反应
-					STATUS = decompose(i, s, ET, RT_min);
-					if (!STATUS) { // 分解失败
-						continue;
-					}
-				} else { // 单分子碰撞反应
-					ineff_coll_on_wall(i, s, ET, RT_min);
-				}
-			} else { // 分子间反应
-				// 选择一个分子对<S1,S2>
-				Molecule s1 = moleculeList.get(randAToB(0, moleculeList.size()-1));
-				Molecule s2 = moleculeList.get(randAToB(0, moleculeList.size()-1));
-				while (s1.equals(s2)) {
-					s2 = moleculeList.get(randAToB(0, moleculeList.size()-1));
-				}
-				if (checkSynth(s1, s2)) { // 分子合成
-					STATUS = synthesis(i, s1, s2, ET, RT_min);
-					if (!STATUS) {
-						continue;
-					}
-				} else { // 分之间碰撞
-					inter_ineff_coll(i, s1, s2, ET, RT_min);
-				}
-			}
-
-			// 找到本代中势能最小的分子结构，更新全局最小
-			minStructure = getMinStructure(moleculeList);
-
-			Map<Integer, Integer> map = minStructure.getStructure();
-			StringBuilder sb = new StringBuilder();
-			for (int j = 0; j < COMPENENT_NUM; j++) {
-				sb.append(map.get(j));
-			}
-			System.out.println("-------第" + iter + "次迭代-------");
-			System.out.println("种群：" + moleculeList.size());
-			
-			
-//			printMoleculeList();
-			
-			System.out.println("本代最优分子结构：" + sb.toString());
-			System.out.println("本代中最小的势能：" + Double.valueOf(df.format(minStructure.PE)));
-			minStructure.PE = Double.MAX_VALUE;
-			
-			//ET = getEAndT(i, RT_min);
-			
-			iter++;
-		} // 迭代结束
-		
-		
-		return minStructure;
+		return molecule;
 	}
 
 	/*
@@ -924,14 +858,10 @@ public class WKCRO {
 		molecule.power = power;
 		
 		//还要传入两个权重
-		double PE = 0.8 * (molecule.makespan - T_min) / (T_max - T_min) + 
-				0.2 * (molecule.power - E_min) / (E_max - E_min);
+		double PE = 0.7 * (molecule.makespan - T_min) / (T_max - T_min) + 
+				0.3 * (molecule.power - E_min) / (E_max - E_min);
 		
-		//只考虑时间，只考虑能耗
-//		double PE = 0 * (molecule.makespan - T_min) / (T_max - T_min) + 
-//				1 * (molecule.power - E_min) / (E_max - E_min);
-		
-		
+//		double PE = (molecule.makespan - T_min) /(T_max - T_min);
 				
 		//清空暂时存放数据的user[i]
 		users[i].clear();

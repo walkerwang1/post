@@ -1,4 +1,4 @@
-package com.paper.alg.ch1;
+package com.paper.ch2;
 
 import java.io.BufferedReader;
 import java.io.File;
@@ -16,8 +16,8 @@ import java.util.Set;
 
 public class WKCRO {
 
-	private static final int USER_NUM = 5;
-	private static final int VM_NUM = 2;
+	private static final int USER_NUM = 20;
+	private static final int VM_NUM = 6;
 
 	// 改变组件个数，记得改变配置文件（组件之间的依赖关系）
 	private static final int COMPENENT_NUM = 4 + 2;
@@ -78,6 +78,8 @@ public class WKCRO {
 			for(int j = 0; j < COMPENENT_NUM; j++ ) {
 				System.out.println("组件" + j + ":   ST:" + users[i].component[j].ST + ";   FT:" + users[i].component[j].FT);
 			}
+			
+			users[i].power = users[i].power / 1000;
 			
 			System.out.println("时间:" + users[i].makespan);
 			System.out.println("能耗:" + users[i].power);
@@ -472,6 +474,7 @@ public class WKCRO {
 					if ((line = br.readLine()) != null) {
 						String[] strs = line.split(" ");
 						users[i].bandWidth = Double.valueOf(strs[0]);
+						users[i].bandWidth = 2000;
 //						System.out.println(users[i].bandWidth);
 					}
 				}
@@ -557,7 +560,7 @@ public class WKCRO {
 	/*
 	 * 虚拟机类
 	 */
-	public class VM {
+	class VM {
 		double RT;
 
 		public VM() {
@@ -567,7 +570,7 @@ public class WKCRO {
 	/**
 	 * 分子类
 	 */
-	public class Molecule {
+	class Molecule {
 		Map<Integer, Integer> structure; // 分子结构
 		double PE; // 分子势能
 		double KE; // 分子动能
@@ -636,7 +639,7 @@ public class WKCRO {
 
 	// CRO相关参数
 	int popSize = 16; // 种群大小
-	int maxIter = 20; // 最大迭代次数
+	int maxIter = 100; // 最大迭代次数
 	double KELossRate = 0.3; // 能量损失率
 	double moleColl = 0.2; // 决策分子反应的参数
 
@@ -924,8 +927,8 @@ public class WKCRO {
 		molecule.power = power;
 		
 		//还要传入两个权重
-		double PE = 0.8 * (molecule.makespan - T_min) / (T_max - T_min) + 
-				0.2 * (molecule.power - E_min) / (E_max - E_min);
+		double PE = 0.7 * (molecule.makespan - T_min) / (T_max - T_min) + 
+				0.3 * (molecule.power - E_min) / (E_max - E_min);
 		
 		//只考虑时间，只考虑能耗
 //		double PE = 0 * (molecule.makespan - T_min) / (T_max - T_min) + 

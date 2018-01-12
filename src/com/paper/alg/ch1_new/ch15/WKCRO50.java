@@ -1,4 +1,4 @@
-package com.paper.alg.ch1;
+package com.paper.alg.ch1_new.ch15;
 
 import java.io.BufferedReader;
 import java.io.File;
@@ -14,10 +14,13 @@ import java.util.Map;
 import java.util.Random;
 import java.util.Set;
 
-public class WKCRO {
+/*
+ * 实验：性能瓶颈实验。测试多少服务器支持多少客户端
+ */
+public class WKCRO50 {
 
-	private static final int USER_NUM = 5;
-	private static final int VM_NUM = 2;
+	private static final int USER_NUM = 1300;
+	private static final int VM_NUM = 50;
 
 	// 改变组件个数，记得改变配置文件（组件之间的依赖关系）
 	private static final int COMPENENT_NUM = 4 + 2;
@@ -29,7 +32,7 @@ public class WKCRO {
 	VM[] vms = new VM[VM_NUM + 1];
 
 	public static void main(String[] args) {
-		WKCRO wkcro = new WKCRO();
+		WKCRO50 wkcro = new WKCRO50();
 		wkcro.run();
 	}
 
@@ -60,13 +63,13 @@ public class WKCRO {
 
 			users[i].molecule = molecule;
 			
-			System.out.println("\n用户" + i + "的最终迁移策略:");
+			/*System.out.println("\n用户" + i + "的最终迁移策略:");
 			StringBuilder sb = new StringBuilder();
 			for(int j = 1; j <= COMPENENT_NUM-2; j++) {
 				Map<Integer, Integer> structure = users[i].molecule.getStructure();
 				sb.append(structure.get(j));
 			}
-			System.out.println(sb.toString());
+			System.out.println(sb.toString());*/
 			
 			
 			double makespan = compMakeSpan(i, molecule, RT_min);
@@ -78,6 +81,8 @@ public class WKCRO {
 			for(int j = 0; j < COMPENENT_NUM; j++ ) {
 				System.out.println("组件" + j + ":   ST:" + users[i].component[j].ST + ";   FT:" + users[i].component[j].FT);
 			}
+			
+			users[i].power = users[i].power / 1000;
 			
 			System.out.println("时间:" + users[i].makespan);
 			System.out.println("能耗:" + users[i].power);
@@ -393,11 +398,13 @@ public class WKCRO {
 		try {
 			for (int i = 1; i <= USER_NUM; i++) {
 
+				int filenum = i % 3 + 1;
+				
 				users[i] = new User();
 
-				URL dir = WKCRO.class.getResource(""); // file:/E:/workspace/post/bin/com/paper/alg/ch1/
+				URL dir = WKCRO50.class.getResource(""); // file:/E:/workspace/post/bin/com/paper/alg/ch1/
 				// 用户i的配置文件
-				String filePath = dir.toString().substring(5) + "User" + i + ".txt";
+				String filePath = dir.toString().substring(5) + "User" + filenum + ".txt";
 				File file = new File(filePath);
 				if (file.exists() && file.isFile()) {
 					InputStreamReader isr = new InputStreamReader(new FileInputStream(file), "utf-8");
@@ -472,6 +479,7 @@ public class WKCRO {
 					if ((line = br.readLine()) != null) {
 						String[] strs = line.split(" ");
 						users[i].bandWidth = Double.valueOf(strs[0]);
+						users[i].bandWidth = 2000;
 //						System.out.println(users[i].bandWidth);
 					}
 				}
@@ -557,7 +565,7 @@ public class WKCRO {
 	/*
 	 * 虚拟机类
 	 */
-	public class VM {
+	class VM {
 		double RT;
 
 		public VM() {
@@ -567,7 +575,7 @@ public class WKCRO {
 	/**
 	 * 分子类
 	 */
-	public class Molecule {
+	class Molecule {
 		Map<Integer, Integer> structure; // 分子结构
 		double PE; // 分子势能
 		double KE; // 分子动能
@@ -636,7 +644,7 @@ public class WKCRO {
 
 	// CRO相关参数
 	int popSize = 16; // 种群大小
-	int maxIter = 20; // 最大迭代次数
+	int maxIter = 100; // 最大迭代次数
 	double KELossRate = 0.3; // 能量损失率
 	double moleColl = 0.2; // 决策分子反应的参数
 
@@ -924,8 +932,8 @@ public class WKCRO {
 		molecule.power = power;
 		
 		//还要传入两个权重
-		double PE = 0.8 * (molecule.makespan - T_min) / (T_max - T_min) + 
-				0.2 * (molecule.power - E_min) / (E_max - E_min);
+		double PE = 0.7 * (molecule.makespan - T_min) / (T_max - T_min) + 
+				0.3 * (molecule.power - E_min) / (E_max - E_min);
 		
 		//只考虑时间，只考虑能耗
 //		double PE = 0 * (molecule.makespan - T_min) / (T_max - T_min) + 
