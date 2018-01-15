@@ -6,6 +6,9 @@ import java.io.FileInputStream;
 import java.io.InputStreamReader;
 import java.net.URL;
 import java.util.ArrayList;
+import java.util.Collections;
+import java.util.Comparator;
+import java.util.List;
 
 public class WK {
 	
@@ -68,7 +71,7 @@ public class WK {
 	public void searchAndAdjust() {
 		
 		//获得初始时间片[0,T]，T表示所有用户中最大的完成时间
-		T = getMaxTime();
+		T = obtainMaxTime();
 		
 		//获取计算资源占用链表compList
 		obtainCompList();
@@ -76,27 +79,28 @@ public class WK {
 		//获取网络资源占用链表netList
 		obtainNetList();
 		
-		double t_ccp = -1;	//计算资源冲突的关键时间点
-		double t_ncp = -1;	//网络资源冲突的关键时间点
+		CompListNode t_pc;	//计算资源冲突的关键时间点
+		NetListNode t_pe;	//网络资源冲突的关键时间点
 		
 		while(true) {
 			
-			t_ccp = t_ncp = -1;
+			t_pc = null;
+			t_pe = null;
 			
 			//搜索计算资源冲突的第一个关键点
-			t_ccp = searchFirstCCP();
+			t_pc = searchFirstCCP();
 			
 			//搜索网络资源冲突的第一个关键点
-			t_ncp = searchFirstNCP();
+			t_pe = searchFirstNCP();
 			
-			if (t_ccp < t_ncp) {	//调整计算资源冲突
-				
+			if (t_pc.start_time < t_pe.start_time) {	//调整计算资源冲突
+				adjustCCP(t_pc);
 			} else {	//调整网络资源冲突
-				
+				adjustNCP(t_pe);
 			}
 			
-			//t_ccp = t_ncp = -1，表示计算资源和网络资源都不存在冲突
-			if (t_ccp == -1 && t_ncp == -1) {
+			//t_ccp = t_ncp = null，表示计算资源和网络资源都不存在冲突
+			if (t_pc == null && t_pe == null) {
 				break;
 			}
 		}
@@ -126,7 +130,7 @@ public class WK {
 	/*
 	 * 获得初始时间片[0,T]，T表示所有用户中最大的完成时间
 	 */
-	public double getMaxTime() {
+	public double obtainMaxTime() {
 		double maxtime = 0;
 		for (int i = 1; i <= N; i++) {
 			if (user[i].completiontime > T) {
@@ -135,6 +139,7 @@ public class WK {
 		}
 		return maxtime;
 	}
+	
 	
 	/*
 	 * 获取计算资源占用链表compList
@@ -156,18 +161,22 @@ public class WK {
 								user[i].component[j].ST < pc.end_time) {	//根据ST划分时间片
 							
 							//节点划分（时间片划分）
-							timeslotPartition(user[i].component[j].ST, pc.start_time, pc.end_time);
+							timeslotPartitionComp(user[i].component[j].ST, pc.start_time, pc.end_time);
 							
 							//时间片划分后下次需要重新遍历compList，compList永远指向头节点
 							pc = compList;
+							
+							break;		//跳出while循环
 						} else if (user[i].component[j].FT > pc.start_time &&
 								user[i].component[j].FT < pc.end_time) {	//根据FT划分时间片
 							
 							//节点划分（时间片划分）
-							timeslotPartition(user[i].component[j].FT, pc.start_time, pc.end_time);
+							timeslotPartitionComp(user[i].component[j].FT, pc.start_time, pc.end_time);
 							
 							//时间片划分后下次需要重新遍历compList
 							pc = compList;
+							
+							break;		//跳出while循环
 						} else {
 							pc = pc.next;
 						}
@@ -178,12 +187,57 @@ public class WK {
 	}
 	
 	/*
-	 * 根据时间进行时间片划分
+	 * 获取网络资源占用链表netList
 	 */
-	public void timeslotPartition(double time, double start_time, double end_time) {
-		//先要在compList中定位到该节点
+	public void obtainNetList() {
+		netList = new NetListNode(0, T);
+		netList.next = null;
+		
+		//遍历所有用户的所有组件，进行时间片划分
+		for(int i = 1; i <= N; i++) {
+			for(int j = 0; j < n; j++) {
+				for(int k = j; k < n; k++) {
+					//存在传输的前提条件，即存在数据发送和数据接收
+					if ((user[i].communication[j][k] > 0 && user[i].component[j].location == 0 && 
+							user[i].component[k].location == 1) || 
+						(user[i].communication[j][k] > 0 && user[i].component[j].location == 1 && 
+							user[i].component[k].location == 0)) {
+						//组件之间存在传输，数据处于发送或者接收状态
+						
+						NetListNode pe = netList;
+						while(pe != null) {
+							if (user[i].component[j].FT > pe.start_time &&
+									user[i].component[j].FT < pe.end_time) {	//根据(j,k)中j的完成时间进行划分
+								//网路资源时间片划分
+								timeslotPartitionComp(user[i].component[j].FT, pe.start_time, pe.end_time);
+								
+								pe = netList;
+								break;		//跳出while循环
+							} else if (user[i].component[k].ST > pe.start_time &&
+									user[i].component[k].ST < pe.end_time) {	//根据(j,k)中j的完成时间进行划分
+								
+								//网络资源时间片划分
+								timeslotPartitionNet(user[i].component[k].ST, pe.start_time, pe.end_time);
+								
+								pe = netList;
+								break;		//跳出while循环
+							} else {
+								pe = pe.next;
+							}
+						}
+					} 
+				}
+			}
+		}
+	}
+	
+	/*
+	 * 根据时间进行时间片划分计算资源:[0,T]----> [0,a],[a,b],[b,T]
+	 */
+	public void timeslotPartitionComp(double time, double start_time, double end_time) {
+		//先要在compList中定位到该节点，及划分pc节点
 		CompListNode pc;
-		CompListNode pc_pre = compList;
+		CompListNode pc_pre = compList;		//链表中pc的前驱节点
 		
 		//表示compList只有一个节点
 		if (pc_pre.next == null) {	
@@ -213,18 +267,40 @@ public class WK {
 	}
 	
 	/*
-	 * 获取网络资源占用链表netList
+	 * 根据时间进行时间片划分网络资源:[0,T]----> [0,a],[a,b],[b,T]
 	 */
-	public void obtainNetList() {
-		netList = new NetListNode(0, T);
+	public void timeslotPartitionNet(double time, double start_time, double end_time) {
+		//先要在netList中定位到该节点，及划分pe节点
+		NetListNode pe;
+		NetListNode pe_pre = netList;		//链表中pe的前驱节点
 		
-		//遍历所有用户的所有组件，进行时间片划分
-		for(int i = 1; i <= N; i++) {
-			for(int j = 0; j < n; j++) {
+		//表示compList只有一个节点
+		if (pe_pre.next == null) {	
+			NetListNode node1 = new NetListNode(start_time, time);
+			NetListNode node2 = new NetListNode(time, end_time);
+			
+			node1.next = node2; node2.next = null;
+			netList = node1;
+		}
+		
+		pe = pe_pre.next;
+		while(pe != null) {
+			if (pe.start_time == start_time) {
+				NetListNode node1 = new NetListNode(start_time, time);
+				NetListNode node2 = new NetListNode(time, end_time);
 				
+				//删除旧节点，并插入新的节点
+				node1.next = node2; 
+				node2.next = pe.next;
+				pe_pre.next = node1;
+				
+				break;		//插入后结束循环
 			}
+			pe_pre = pe;
+			pe = pe.next;
 		}
 	}
+	
 	
 	/*
 	 * 统计每个时间片中组件的个数（包括开始时间，不包括结束时间）
@@ -232,12 +308,43 @@ public class WK {
 	public void obtainTimeslotNum() {
 		
 		CompListNode pc = compList;
-		NetListNode  pe = netList;
-		
-		//遍历所有用户的所有组件，进行时间片划分
+		//获取计算资源占用链表每个时间片的number
 		for(int i = 1; i <= N; i++) {
 			for(int j = 0; j < n; j++) {
-				
+				if (user[i].component[j].location == 1) {
+					while(pc != null) {
+						if (pc.start_time >= user[i].component[j].ST 
+								&& pc.end_time <= user[i].component[j].FT) {
+							pc.number++;
+						} else {
+							pc = pc.next;
+						}
+					}
+				}
+			}
+		}
+		
+		NetListNode  pe = netList;
+		//获取网络资源占用链表每个时间片的number
+		for(int i = 1; i <= N; i++) {
+			for(int j = 0; j < n; j++) {
+				for(int k = j; k < n; k++) {
+					if ((user[i].communication[j][k] > 0 && user[i].component[j].location == 0 && 
+							user[i].component[k].location == 1) || 
+						(user[i].communication[j][k] > 0 && user[i].component[j].location == 1 && 
+							user[i].component[k].location == 0)) {
+						//组件之间存在传输，发送+接收
+						
+						while(pe != null) {
+							if (pe.start_time >= user[i].component[j].FT &&
+									pe.end_time <= user[i].component[k].ST) {
+								pe.number++;
+							} else {
+								pe = pe.next;
+							}
+						}
+					}
+				}
 			}
 		}
 	}
@@ -245,20 +352,236 @@ public class WK {
 	/*
 	 * 搜索计算资源冲突的第一个关键点
 	 */
-	public double searchFirstCCP() {
+	public CompListNode searchFirstCCP() {
 		//计算资源kr
 		
-		return -1;	//没有计算资源冲突则返回-1
+//		double  first_tccp = -1;
+		
+		CompListNode pc = compList;
+		while(pc != null) {
+			if (pc.number > k * r) {
+//				first_tccp = pc.start_time;
+				return pc;
+			}
+			pc = pc.next;
+		}
+		return pc;	//没有计算资源冲突则返回-1
 	}
 	
 	/*
 	 * 搜索网络资源冲突的第一个关键点
 	 */
-	public double searchFirstNCP() {
+	public NetListNode searchFirstNCP() {
 		//网络资源nch
+//		double first_tncp = -1;
 		
-		return -1;	//没有网络资源冲突则返回-1
+		NetListNode pe = netList;
+		while(pe != null) {
+			if (pe.number > nch) {
+//				first_tncp = pe.start_time;
+				return pe;
+			}
+			pe = pe.next;
+		}
+		
+		return pe;	//没有网络资源冲突则返回-1
 	}
+	
+	/*
+	 * 调整计算资源冲突
+	 */
+	public void adjustCCP(CompListNode t_pc) {
+		//1-找到计算时间包含该时间片的所有组件
+		//2-对组件进行调整，通过回报函数确定调整哪几个组件。调整组件个数: t_pc.number - k*r
+		//3-调整之后更新组件的实际执行情况
+		
+		List<AdjustComponent > acList = new ArrayList<>();
+		
+		//这里回报函数的计算，还没有到具体调整那一步
+		for(int i = 1; i <= N; i++) {
+			for(int j = 0; j < n; j++) {
+				//组件在MEC执行，且组件的执行时间包含时间片t_pc
+				if(user[i].component[j].location == 1 && user[i].component[j].ST <= t_pc.start_time 
+						&& user[i].component[j].FT >= t_pc.end_time) {
+					//延迟执行组件
+					double delay_reward = delayCCP(i,j,t_pc);
+					
+					//调整执行位置
+					double change_reward = changeCCP(i,j,t_pc);
+					
+					//调整的组件实例
+					AdjustComponent ac = new AdjustComponent();
+					ac.i = i;
+					ac.j = j;
+					
+					if (delay_reward <= change_reward) {	//延迟执行回报优，则延迟执行
+						ac.way = 0;
+						ac.reward = delay_reward;
+					} else {	//否则改变执行位置
+						ac.way = 1;
+						ac.reward = change_reward;
+					}
+					
+					acList.add(ac);
+				}
+			}
+		}
+		
+		//对acList进行降序排序，选择前(t_pc.number - k*r)个组件进行调整
+		sortDescByReward(acList);
+		
+		//更新所有组件的执行位置。acList.size() = t_pc.number
+		int adjust_num = t_pc.number - k*r;
+		for(int k = 0; k < acList.size(); k++) {
+			
+			//调整adjust_num个组件，终止调整
+			if (k == adjust_num) {
+				break;
+			}
+		}
+		
+		//调整过程结束和清空acList
+		acList = null;
+	}
+	
+	/*
+	 * 计算资源调整——延迟执行
+	 * 		返回：延迟执行增加的能耗，越小越好
+	 */
+	public double delayCCP(int i, int j, CompListNode t_pc) {
+		double reward = Double.MAX_VALUE;
+		double delay_time = 0;
+		
+		CompListNode pc = compList;
+		while(pc != null) {
+			//从t_pc往后延迟，并且第一个资源不超过资源约束条件，同时还要满足组件的最迟完成时间
+			if (pc.start_time >= t_pc.start_time && pc.number < k*r 
+					&& pc.start_time <= user[i].component[j].LST) {
+				delay_time = pc.start_time - user[i].component[j].ST;	//延迟的时间
+			}
+			pc = pc.next;
+		}
+		
+		reward = delay_time * 0;	//静态功耗。
+		
+		return reward;
+	}
+	
+	/*
+	 * 计算资源调整——改变执行位置。调整方式：从MEC返回到本地
+	 */
+	public double changeCCP(int i, int j, CompListNode t_pc) {
+		double reward = 0;			//改变执行位置后增加的能耗
+		double changeSendE = 0;			//增加的数据发送能耗
+		double changeRecvE = 0;			//增加的数据接收能耗
+		double changeDynamicE = 0;		//增加的动态能耗
+		double changeStaticE  = 0;		//增加的静态能耗
+		
+		CompListNode pc = compList;
+		while(pc != null) {
+			
+			pc = pc.next;
+		}
+		
+		reward = changeSendE + changeRecvE + changeDynamicE + changeStaticE;
+		return reward;
+	}
+	
+	/*
+	 * 对要调整组件的List进行降序排序，以便选取前几个进行调整
+	 */
+	public void sortDescByReward(List<AdjustComponent> acList) {
+		Comparator<AdjustComponent> comparator = new MyComparator();
+		Collections.sort(acList, comparator);
+	}
+	
+	/*
+	 * 自定义比较器
+	 */
+	public class MyComparator implements Comparator<AdjustComponent> {
+		@Override
+		public int compare(AdjustComponent o1, AdjustComponent o2) {
+			if (o1.reward < o2.reward) {
+				return 1;
+			} else {
+				return 0;
+			}
+		}
+	}
+	
+	/*
+	 * 调整网络资源冲突
+	 */
+	public void adjustNCP(NetListNode t_pe) {
+		//1-找到计算时间包含该时间片的所有组件
+				//2-对组件进行调整，通过回报函数确定调整哪几个组件。调整组件个数: t_pc.number - k*r
+				//3-调整之后更新组件的实际执行情况
+				
+				List<AdjustComponent > acList = new ArrayList<>();
+				
+				for(int i = 1; i <= N; i++) {
+					for(int j = 0; j < n; j++) {
+						//组件有数据发送到MEC，且组件的执行时间包含时间片t_pc
+						if(true) {
+							//延迟执行组件
+							double delay_reward = delayNCP();
+							
+							//调整执行位置
+							double change_reward = changeNCP();
+							
+							//调整的组件实例
+							AdjustComponent ac = new AdjustComponent();
+							ac.i = i;
+							ac.j = j;
+							
+							if (delay_reward <= change_reward) {	//延迟执行汇报优，则延迟执行
+								ac.way = 0;
+								ac.reward = delay_reward;
+							} else {	//否则改变执行位置
+								ac.way = 1;
+								ac.reward = change_reward;
+							}
+							
+							acList.add(ac);
+						}
+					}
+				}
+				
+				//对acList进行降序排序，选择前(t_pc.number - k*r)个组件进行调整
+				//对acList进行降序排序，选择前(t_pc.number - k*r)个组件进行调整
+				sortDescByReward(acList);
+				
+				//更新所有组件的执行位置。acList.size() = t_pc.number
+				int adjust_num = t_pe.number - k*r;
+				for(int k = 0; k < acList.size(); k++) {
+					
+					//调整adjust_num个组件，终止调整
+					if (k == adjust_num) {
+						break;
+					}
+				}
+				
+				//更新所有组件的执行位置
+	}
+	
+	/*
+	 * 网络资源调整——延迟执行
+	 */
+	public double delayNCP() { 
+		double reward = 0;
+		
+		return reward;
+	}
+	
+	/*
+	 * 网络资源调整——改变执行位置
+	 */
+	public double changeNCP() {
+		double reward = 0;
+		
+		return reward;
+	}
+	
 	//---------------------------2-资源调整过程-end--------------------------
 	
 	
@@ -326,6 +649,19 @@ public class WK {
 						}
 					}
 					line = br.readLine();
+					
+					// 魅族metal的不同功耗
+					if ((line = br.readLine()) != null) {
+						String[] strs = line.split(" ");
+						for (int j = 0; j < 20; j++) {
+							if (Double.valueOf(strs[j]) == 0) {
+								break;
+							}
+							user[i].powerList.add(Double.valueOf(strs[j]));
+						}
+					}
+					user[i].Pmax = user[i].powerList.get(0);
+					System.out.println();
 				}
 			}
 
@@ -439,5 +775,16 @@ public class WK {
 		public String toString() {
 			return start_time + "-" + end_time + "-" + number;
 		}
+	}
+	
+	/*
+	 * 要调整的组件的数据结构
+	 */
+	class AdjustComponent {
+		int i;		//用户i
+		int j;		//组件j
+		
+		double reward;		//回报值
+		int    way;		//0-延迟执行；1-调整执行位置
 	}
 }
