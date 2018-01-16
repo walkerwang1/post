@@ -26,6 +26,8 @@ public class WK {
 	
 	static User[] user = new User[N+1];				//所有用户，0为空下标
 	
+	double[] RT = new double[N+1];		//记录移动设备最早开始执行任务的时间
+	
 	CompListNode compList;		//计算资源占用链表的头节点
 	
 	NetListNode netList;		//网络资源占用链表的头节点
@@ -60,10 +62,105 @@ public class WK {
 	/*
 	 * 1-初始卸载策略
 	 */
+	//---------------------------1-初始卸载策略-start--------------------------
 	public void initOffloadingResult() {
-		//所用用户的完成时间
+		//入口和出口组件设置
+		ioComponent();
 		
+		//根据能耗大小确定所有用户组件的执行位置
+		decision();
 	}
+	
+	/*
+	 * 入口和出口组件的执行位置及时间设置
+	 */
+	public void ioComponent() {
+		for(int i = 1; i <= N; i++) {
+			user[i].component[0].location = 0;
+			user[i].component[0].exetime_mec = 0;
+			user[i].component[0].ST = 0;
+			user[i].component[0].FT = 0;
+			
+			user[i].component[n-1].location = 0;
+			user[i].component[n-1].exetime_mec = 0;
+			user[i].component[n-1].ST = 0;
+			user[i].component[n-1].FT = 0;
+		}
+	}
+	
+	/*
+	 * 决策过程：根据能耗大小确定所有用户组件的执行位置
+	 */
+	public void decision() {
+		for(int i = 1; i <= N; i++) {
+			for(int j = 1; j < n-1; j++) {
+				
+				//本地执行能耗
+				double localE = getLocalEnergy(i,j);
+				
+				//mec执行能耗
+				double mecE = getMecEnergy(i,j);
+				
+				if (localE < mecE) {	//本地执行
+					
+				} else if (localE > mecE) {		//mec执行	
+					
+				} else {				//能耗相等则根据完成时间小的作为卸载位置
+					
+				}
+			}
+		}
+	}
+	
+	/*
+	 * 获得组件在本地执行能耗
+	 */
+	public double getLocalEnergy(int i, int j) {
+		double localE = 0;
+		double sendE = 0;
+		double dynamicE = 0;
+		
+		//计算组件的开始执行时间，模型计算方式：获取前驱组件j_pre的最大完成时间+存在的传输时间
+		
+		//组件(i,j)的前驱组件
+		List<Integer> list = getPreNodeList(i, j);
+		for(int k = 0; k < list.size(); k++) {
+			int j_pre = list.get(k);
+			if (user[i].communication[j_pre][j] > 0 && user[i].component[j_pre].location == 1) {
+				
+			}
+		}
+		
+		dynamicE = user[i].component[j].exetime_mobile * user[i].pmax;
+		
+		localE = sendE + dynamicE;
+		return localE;
+	}
+	
+	/*
+	 * 获得组件在MEC执行能耗
+	 */
+	public double getMecEnergy(int i, int j) {
+		double mecE = 0;
+		
+		return mecE;
+	}
+	
+	/*
+	 * 获取用户i组件j的前驱组件集合
+	 */
+	public List<Integer> getPreNodeList(int i, int j) {
+		List<Integer> list = new ArrayList<>();
+		for(int k = 0; k < n; k++) {
+			if (user[i].communication[k][j] > 0) {
+				list.add(k);
+			}
+		}
+		return list;
+	}
+	
+	//---------------------------1-初始卸载策略-end----------------------------
+	
 	
 	/*
 	 * 2-资源调整过程
@@ -119,11 +216,6 @@ public class WK {
 	public void powerControl() {
 		
 	}
-	
-	
-	//---------------------------1-初始卸载策略-start--------------------------
-	
-	//---------------------------1-初始卸载策略-end----------------------------
 	
 	
 	//---------------------------2-资源调整过程-start--------------------------
@@ -438,6 +530,8 @@ public class WK {
 			if (k == adjust_num) {
 				break;
 			}
+			
+			
 		}
 		
 		//调整过程结束和清空acList
@@ -559,6 +653,9 @@ public class WK {
 					if (k == adjust_num) {
 						break;
 					}
+					
+					AdjustComponent adjustComponent = acList.get(k);
+					double rewar = adjustComponent.reward;
 				}
 				
 				//更新所有组件的执行位置
@@ -650,7 +747,7 @@ public class WK {
 					}
 					line = br.readLine();
 					
-					// 魅族metal的不同功耗
+					// 手机的不同功耗值
 					if ((line = br.readLine()) != null) {
 						String[] strs = line.split(" ");
 						for (int j = 0; j < 20; j++) {
@@ -660,8 +757,14 @@ public class WK {
 							user[i].powerList.add(Double.valueOf(strs[j]));
 						}
 					}
-					user[i].Pmax = user[i].powerList.get(0);
+					user[i].pmax = user[i].powerList.get(0);
 					System.out.println();
+					
+					//手机的空闲功耗值
+					if ((line = br.readLine()) != null) {
+						String[] strs = line.split(" ");
+						user[i].staticp = Double.valueOf(strs[0]);
+					}
 				}
 			}
 
@@ -683,8 +786,10 @@ public class WK {
 		double deadline;		//应用i的截止时间
 		double totalpower;		//移动设备i的总能耗
 		
-		double Pmax = 0;	//最大功率
+		double pmax = 0;	//最大功率
 		double fmax = 0; 	//最大频率
+		
+		double staticp = 0;		//静态功率
 		
 		double Precv;		//接收功率
 		
