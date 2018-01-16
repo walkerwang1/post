@@ -69,6 +69,9 @@ public class WK {
 		
 		//根据能耗大小确定所有用户组件的执行位置
 		decision();
+		
+		//卸载策略得到之后，得到用户组件的各个时间
+		obtainTime();
 	}
 	
 	/*
@@ -77,14 +80,12 @@ public class WK {
 	public void ioComponent() {
 		for(int i = 1; i <= N; i++) {
 			user[i].component[0].location = 0;
-			user[i].component[0].exetime_mec = 0;
+			user[i].component[0].exetime_mobile = 0;
 			user[i].component[0].ST = 0;
 			user[i].component[0].FT = 0;
 			
 			user[i].component[n-1].location = 0;
-			user[i].component[n-1].exetime_mec = 0;
-			user[i].component[n-1].ST = 0;
-			user[i].component[n-1].FT = 0;
+			user[i].component[n-1].exetime_mobile = 0;
 		}
 	}
 	
@@ -101,12 +102,10 @@ public class WK {
 				//mec执行能耗
 				double mecE = getMecEnergy(i,j);
 				
-				if (localE < mecE) {	//本地执行
-					
-				} else if (localE > mecE) {		//mec执行	
-					
-				} else {				//能耗相等则根据完成时间小的作为卸载位置
-					
+				if (localE < mecE) {	
+					user[i].component[j].location = 0;	//本地执行
+				} else {				
+					user[i].component[j].location = 1;	//mec执行	
 				}
 			}
 		}
@@ -116,9 +115,9 @@ public class WK {
 	 * 获得组件在本地执行能耗
 	 */
 	public double getLocalEnergy(int i, int j) {
-		double localE = 0;
-		double sendE = 0;
-		double dynamicE = 0;
+		double localE = 0;		//本地执行能耗
+		double recvE = 0;		//接收数据能耗
+		double dynamicE = 0;	//本地执行能耗
 		
 		//计算组件的开始执行时间，模型计算方式：获取前驱组件j_pre的最大完成时间+存在的传输时间
 		
@@ -127,13 +126,13 @@ public class WK {
 		for(int k = 0; k < list.size(); k++) {
 			int j_pre = list.get(k);
 			if (user[i].communication[j_pre][j] > 0 && user[i].component[j_pre].location == 1) {
-				
+				recvE += user[i].communication[j_pre][j] / deltaB * user[i].recvPower;
 			}
 		}
 		
-		dynamicE = user[i].component[j].exetime_mobile * user[i].pmax;
+		dynamicE = user[i].component[j].exetime_mobile * user[i].maxCPUPower;
 		
-		localE = sendE + dynamicE;
+		localE = recvE + dynamicE;
 		return localE;
 	}
 	
@@ -142,7 +141,18 @@ public class WK {
 	 */
 	public double getMecEnergy(int i, int j) {
 		double mecE = 0;
+		double sendE = 0;
 		
+		List<Integer> list = getPreNodeList(i, j);
+		for(int k = 0; k < list.size(); k++) {
+			int j_pre = list.get(k);
+			if (user[i].communication[j_pre][j] > 0 && user[i].component[j_pre].location == 1) {
+				sendE += user[i].communication[j_pre][j] / deltaB * user[i].maxSendPower;
+			}
+		}
+		
+		//mec能耗，初始卸载策略忽略空闲能耗
+		mecE = sendE;
 		return mecE;
 	}
 	
@@ -157,6 +167,154 @@ public class WK {
 			}
 		}
 		return list;
+	}
+	
+	/*
+	 * 获取组件(i,j)的后继组件集合
+	 */
+	public List<Integer> getSuccNodeList(int i, int j) {
+		List<Integer> list = new ArrayList<>();
+		for(int k =j; k < n; k++) {
+			if (user[i].communication[j][k] > 0) {
+				list.add(k);
+			}
+		}
+		return list;
+	}
+	
+	
+	/*
+	 * 根据决策计算组件的ST,FT,LST,LFT。（根据模型）
+	 */
+	public void obtainTime() {
+		
+		//得到组件的ST、FT
+		obtainSTandFT();
+		
+		//得到组件的LST、LFT
+		obtainLSTandLFT();
+	}
+	
+	/*
+	 * 得到组件的ST、FT
+	 */
+	public void obtainSTandFT() {
+		for(int i = 1; i <= N; i++) {
+			for(int j = 1; j < n-1; j++) {
+				if (user[i].component[j].location == 0) {		//组件在本地执行的情况
+					double maxST = 0;
+					double st = 0;
+					
+					List<Integer> list = getPreNodeList(i, j);
+					for(int k = 0; k < list.size(); k++) {
+						int j_pre = list.get(k);
+						if (user[i].component[j_pre].location == 0) {
+							st = max(user[i].component[j_pre].FT, RT[i]);
+						} else if (user[i].component[j_pre].location == 1) {
+							st = max(user[i].component[j_pre].FT + user[i].communication[j_pre][j] / deltaB, RT[i]);
+						}
+						if (st > maxST) {
+							maxST =st;
+						}
+					}
+					
+					//更新移动设备i的最早开始执行时间RT
+					RT[i] = user[i].component[j].FT;
+					
+					user[i].component[j].ST = maxST;
+					user[i].component[j].FT = user[i].component[j].ST + user[i].component[j].exetime_mobile;
+					
+				} if (user[i].component[j].location == 1) {		//组件在MEC执行的情况
+					double maxST = 0;
+					double st = 0;
+					
+					List<Integer> list = getPreNodeList(i, j);
+					for(int k = 0; k < list.size(); k++) {
+						int j_pre = list.get(k);
+						if (user[i].component[j_pre].location == 0) {
+							st = user[i].component[j_pre].FT + user[i].communication[j_pre][j] / deltaB;
+						} else if (user[i].component[j_pre].location == 1) {
+							st = user[i].component[j_pre].FT;
+						}
+						if (st > maxST) {
+							maxST =st;
+						}
+					}
+					
+					user[i].component[j].ST = maxST;
+					user[i].component[j].FT = user[i].component[j].ST + user[i].component[j].exetime_mec;
+					
+				}else if (getPreNodeList(i, j) == null) {		//组件前驱为空的情况
+					user[i].component[j].ST = 0;
+					user[i].component[j].FT = 0;
+				} 
+			}
+		}
+	}
+	
+	/*
+	 * 获得组件的LST、LFT
+	 */
+	public void obtainLSTandLFT() {
+		for(int i = 1; i <= N; i++) {
+			for(int j = n-1; j >= 0; j--) {		//从最后一个组件开始逆序计算
+				if (user[i].component[j].location == 0) {
+					double minLFT = 0;
+					double lft = 0;
+					
+					List<Integer> list = getSuccNodeList(i, j);
+					for(int k = 0; k < list.size(); k++) {
+						int j_succ = list.get(k);
+						if (user[i].component[j_succ].location == 0) {
+							lft = user[i].component[j_succ].LST;
+						} else if (user[i].component[j_succ].location == 1) {
+							lft = user[i].component[j_succ].LST - user[i].communication[j][j_succ] / deltaB;
+						}
+						
+						if (lft < minLFT) {
+							minLFT = lft;
+						}
+					}
+					
+					user[i].component[j].LFT = minLFT;
+					user[i].component[j].LST = minLFT - user[i].component[j].exetime_mobile;
+				} else if (user[i].component[j].location == 1) {
+					double minLFT = 0;
+					double lft = 0;
+					
+					List<Integer> list = getSuccNodeList(i, j);
+					for(int k = 0; k < list.size(); k++) {
+						int j_succ = list.get(k);
+						if (user[i].component[j_succ].location == 0) {
+							lft = user[i].component[j_succ].LST - user[i].communication[j][j_succ] / deltaB;
+						} else if (user[i].component[j_succ].location == 1) {
+							lft = user[i].component[j_succ].LST;
+						}
+						
+						if (lft < minLFT) {
+							minLFT = lft;
+						}
+					}
+					
+					user[i].component[j].LFT = minLFT;
+					user[i].component[j].LST = minLFT - user[i].component[j].exetime_mobile;
+				} if (getSuccNodeList(i, j) == null) {		//组件后继组件为空
+					user[i].component[j].LFT = user[i].deadline;
+					user[i].component[j].LST = user[i].deadline;
+				}
+			}
+		}
+	}
+	
+	/*
+	 * 取a和b中的最大值
+	 */
+	public double max(double a, double b) {
+		if (a > b) {
+			return a;
+		} else {
+			return b;
+		}
 	}
 	
 	//---------------------------1-初始卸载策略-end----------------------------
@@ -556,7 +714,7 @@ public class WK {
 			pc = pc.next;
 		}
 		
-		reward = delay_time * 0;	//静态功耗。
+		reward = delay_time * 0;	//静态功耗
 		
 		return reward;
 	}
@@ -745,25 +903,46 @@ public class WK {
 							System.out.print(user[i].component[j].exetime_mec+ " ");
 						}
 					}
-					line = br.readLine();
 					
-					// 手机的不同功耗值
+					line = br.readLine();
+					// cpu的不同功耗值
 					if ((line = br.readLine()) != null) {
 						String[] strs = line.split(" ");
 						for (int j = 0; j < 20; j++) {
 							if (Double.valueOf(strs[j]) == 0) {
 								break;
 							}
-							user[i].powerList.add(Double.valueOf(strs[j]));
+							user[i].cpuPowerList.add(Double.valueOf(strs[j]));
 						}
 					}
-					user[i].pmax = user[i].powerList.get(0);
+					user[i].maxCPUPower = user[i].cpuPowerList.get(0);
 					System.out.println();
 					
 					//手机的空闲功耗值
 					if ((line = br.readLine()) != null) {
 						String[] strs = line.split(" ");
 						user[i].staticp = Double.valueOf(strs[0]);
+					}
+					
+					
+					line = br.readLine();
+					// 手机的不同发射功耗值
+					if ((line = br.readLine()) != null) {
+						String[] strs = line.split(" ");
+						for (int j = 0; j < 10; j++) {
+							if (Double.valueOf(strs[j]) == 0) {
+								break;
+							}
+							user[i].sendPowerList.add(Double.valueOf(strs[j]));
+						}
+					}
+					user[i].maxSendPower = user[i].sendPowerList.get(0);
+					System.out.println();
+					
+					//接收功率值
+					if ((line = br.readLine()) != null) {
+						String[] strs = line.split(" ");
+						user[i].recvPower = Double.valueOf(strs[0]);
 					}
 				}
 			}
@@ -786,16 +965,18 @@ public class WK {
 		double deadline;		//应用i的截止时间
 		double totalpower;		//移动设备i的总能耗
 		
-		double pmax = 0;	//最大功率
 		double fmax = 0; 	//最大频率
 		
 		double staticp = 0;		//静态功率
 		
-		double Precv;		//接收功率
+		double recvPower;		//接收功率
 		
-		ArrayList<Double> powerList;		//不同频率的集合
+		
+		ArrayList<Double> cpuPowerList;		//不同频率的集合
+		double maxCPUPower = 0;	//最大功率
 		
 		ArrayList<Double> sendPowerList;	//不同发送功率的集合
+		double maxSendPower;	//最大发送功率
 		
 		public User() {
 			component = new Component[n];
