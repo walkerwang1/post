@@ -5,19 +5,29 @@ import java.io.File;
 import java.io.FileInputStream;
 import java.io.InputStreamReader;
 import java.net.URL;
+import java.text.DecimalFormat;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.Comparator;
 import java.util.List;
 
+/*
+ * cd e:/workspace/post/src/com/paper/
+ * 
+ * git commit -m "2018-1-16"
+ * git push https://github.com/walkerwang1/post.git master
+ * 
+ * walkerwang1
+ * wang07181110
+ */
 public class WK {
 	
 	static int N = 1;		//用户个数
 	static int n = 7 + 2;	//组件个数
 	
-	static double B = 0;		//网络带宽
-	static int nch = 2;			//网络子信道个数
-	static double deltaB = 0;	//每个信道的带宽。（数据上传带宽，数据下载带宽）
+	static double B = 240;		//网络带宽
+	static int nch = 8;			//网络子信道个数
+	static double deltaB = 30;	//每个信道的带宽。（数据上传带宽，数据下载带宽）
 	
 	static int k = 0;		//MEC服务器个数
 	static int r = 0;		//每个服务器的核数
@@ -31,6 +41,8 @@ public class WK {
 	CompListNode compList;		//计算资源占用链表的头节点
 	
 	NetListNode netList;		//网络资源占用链表的头节点
+	
+	DecimalFormat df = new DecimalFormat("#.00"); // 用户格式化数据，double输出保留二位小数
 	
 	// 主函数
 	public static void main(String[] args) {
@@ -50,13 +62,13 @@ public class WK {
 		initOffloadingResult();
 		
 		//2-资源调整过程
-		searchAndAdjust();
+//		searchAndAdjust();
 		
 		//3-DVFS调节
-		dvfs();
+//		dvfs();
 		
 		//4-终端发送功率控制
-		powerControl();
+//		powerControl();
 	}
 	
 	/*
@@ -72,6 +84,9 @@ public class WK {
 		
 		//卸载策略得到之后，得到用户组件的各个时间
 		obtainTime();
+		
+		//输出卸载结果
+		printInitResult();
 	}
 	
 	/*
@@ -200,8 +215,8 @@ public class WK {
 	 */
 	public void obtainSTandFT() {
 		for(int i = 1; i <= N; i++) {
-			for(int j = 1; j < n-1; j++) {
-				if (user[i].component[j].location == 0) {		//组件在本地执行的情况
+			for(int j = 0; j < n; j++) {
+				if (getPreNodeList(i, j).size() != 0 && user[i].component[j].location == 0) {		//组件在本地执行的情况
 					double maxST = 0;
 					double st = 0;
 					
@@ -224,7 +239,7 @@ public class WK {
 					user[i].component[j].ST = maxST;
 					user[i].component[j].FT = user[i].component[j].ST + user[i].component[j].exetime_mobile;
 					
-				} if (user[i].component[j].location == 1) {		//组件在MEC执行的情况
+				} if (getPreNodeList(i, j).size() != 0 && user[i].component[j].location == 1) {		//组件在MEC执行的情况
 					double maxST = 0;
 					double st = 0;
 					
@@ -244,7 +259,7 @@ public class WK {
 					user[i].component[j].ST = maxST;
 					user[i].component[j].FT = user[i].component[j].ST + user[i].component[j].exetime_mec;
 					
-				}else if (getPreNodeList(i, j) == null) {		//组件前驱为空的情况
+				}else if (getPreNodeList(i, j).size() == 0) {		//组件前驱为空的情况
 					user[i].component[j].ST = 0;
 					user[i].component[j].FT = 0;
 				} 
@@ -258,7 +273,7 @@ public class WK {
 	public void obtainLSTandLFT() {
 		for(int i = 1; i <= N; i++) {
 			for(int j = n-1; j >= 0; j--) {		//从最后一个组件开始逆序计算
-				if (user[i].component[j].location == 0) {
+				if (getSuccNodeList(i, j).size() != 0 && user[i].component[j].location == 0) {
 					double minLFT = 0;
 					double lft = 0;
 					
@@ -278,7 +293,7 @@ public class WK {
 					
 					user[i].component[j].LFT = minLFT;
 					user[i].component[j].LST = minLFT - user[i].component[j].exetime_mobile;
-				} else if (user[i].component[j].location == 1) {
+				} else if (getSuccNodeList(i, j).size() != 0 && user[i].component[j].location == 1) {
 					double minLFT = 0;
 					double lft = 0;
 					
@@ -298,7 +313,7 @@ public class WK {
 					
 					user[i].component[j].LFT = minLFT;
 					user[i].component[j].LST = minLFT - user[i].component[j].exetime_mobile;
-				} if (getSuccNodeList(i, j) == null) {		//组件后继组件为空
+				}else if (getSuccNodeList(i, j).size() == 0) {		//组件后继组件为空
 					user[i].component[j].LFT = user[i].deadline;
 					user[i].component[j].LST = user[i].deadline;
 				}
@@ -314,6 +329,21 @@ public class WK {
 			return a;
 		} else {
 			return b;
+		}
+	}
+	
+	/*
+	 * 输出卸载结果
+	 */
+	public void printInitResult() {
+		for(int i = 1; i <= N; i++) {
+			for(int j = 0; j < n; j++) {
+				System.out.println("组件(" + i + "," + j + "): 执行位置:" + user[i].component[j].location +
+						";  ST:" + df.format(user[i].component[j].ST) + 
+						";  FT:" + df.format(user[i].component[j].FT) +
+						";  LST:" + df.format(user[i].component[j].LST) +
+						";  LFT:" + df.format(user[i].component[j].LFT));
+			}
 		}
 	}
 	
@@ -688,8 +718,6 @@ public class WK {
 			if (k == adjust_num) {
 				break;
 			}
-			
-			
 		}
 		
 		//调整过程结束和清空acList
@@ -710,12 +738,18 @@ public class WK {
 			if (pc.start_time >= t_pc.start_time && pc.number < k*r 
 					&& pc.start_time <= user[i].component[j].LST) {
 				delay_time = pc.start_time - user[i].component[j].ST;	//延迟的时间
+				
+				//延迟后组件的开始时间不能小于最迟开始时间
+				if (pc.start_time > user[i].component[j].LST) {
+					return Double.MAX_VALUE;
+				}
+				break;
 			}
 			pc = pc.next;
 		}
 		
-		reward = delay_time * 0;	//静态功耗
-		
+		//静态功耗
+		reward = delay_time * user[i].staticPower;	
 		return reward;
 	}
 	
@@ -729,11 +763,38 @@ public class WK {
 		double changeDynamicE = 0;		//增加的动态能耗
 		double changeStaticE  = 0;		//增加的静态能耗
 		
-		CompListNode pc = compList;
-		while(pc != null) {
-			
-			pc = pc.next;
+		//发送能耗：MEE模式。
+		List<Integer> preList = getPreNodeList(i, j);
+		double firstSendTime = 0;
+		for(int k = 0; k < preList.size(); k++) {
+			if (user[i].component[k].location == 0) {	//原先的发送时间
+				firstSendTime += user[i].communication[k][j] / deltaB;
+			}
 		}
+		List<Integer> succList = getSuccNodeList(i, j);
+		double secondSendTime = 0;
+		for(int k = 0; k < succList.size(); k++) {
+			if (user[i].component[k].location == 1) {	//后来增加的发送时间
+				secondSendTime += user[i].communication[j][k] / deltaB;
+			}
+		}
+		changeSendE = (secondSendTime - firstSendTime) * user[i].maxSendPower;
+		
+		//数据接收能耗：EEM模式
+		double recvTime = 0;
+		for(int k = 0; k < preList.size(); k++) {
+			if (user[i].component[k].location == 1) {
+				recvTime += user[i].communication[k][j] / deltaB;
+			}
+		}
+		changeRecvE = recvTime * user[i].recvPower;
+		
+		//返回终端增加的能耗
+		changeDynamicE = user[i].component[j].exetime_mobile * user[i].maxCPUPower;
+		
+		//增加的静态能耗
+		changeStaticE = user[i].staticPower * (secondSendTime - firstSendTime + recvTime -
+				user[i].component[j].exetime_mec);
 		
 		reward = changeSendE + changeRecvE + changeDynamicE + changeStaticE;
 		return reward;
@@ -766,72 +827,99 @@ public class WK {
 	 */
 	public void adjustNCP(NetListNode t_pe) {
 		//1-找到计算时间包含该时间片的所有组件
-				//2-对组件进行调整，通过回报函数确定调整哪几个组件。调整组件个数: t_pc.number - k*r
-				//3-调整之后更新组件的实际执行情况
-				
-				List<AdjustComponent > acList = new ArrayList<>();
-				
-				for(int i = 1; i <= N; i++) {
-					for(int j = 0; j < n; j++) {
-						//组件有数据发送到MEC，且组件的执行时间包含时间片t_pc
-						if(true) {
-							//延迟执行组件
-							double delay_reward = delayNCP();
-							
-							//调整执行位置
-							double change_reward = changeNCP();
-							
-							//调整的组件实例
-							AdjustComponent ac = new AdjustComponent();
-							ac.i = i;
-							ac.j = j;
-							
-							if (delay_reward <= change_reward) {	//延迟执行汇报优，则延迟执行
-								ac.way = 0;
-								ac.reward = delay_reward;
-							} else {	//否则改变执行位置
-								ac.way = 1;
-								ac.reward = change_reward;
-							}
-							
-							acList.add(ac);
-						}
-					}
-				}
-				
-				//对acList进行降序排序，选择前(t_pc.number - k*r)个组件进行调整
-				//对acList进行降序排序，选择前(t_pc.number - k*r)个组件进行调整
-				sortDescByReward(acList);
-				
-				//更新所有组件的执行位置。acList.size() = t_pc.number
-				int adjust_num = t_pe.number - k*r;
-				for(int k = 0; k < acList.size(); k++) {
+		//2-对组件进行调整，通过回报函数确定调整哪几个组件。调整组件个数: t_pc.number - k*r
+		//3-调整之后更新组件的实际执行情况
+		
+		List<AdjustComponent > acList = new ArrayList<>();
+		
+		for(int i = 1; i <= N; i++) {
+			for(int j = 0; j < n; j++) {
+				//组件有数据发送到MEC，且组件的执行时间包含时间片t_pc
+				if(true) {
+					//延迟执行组件
+					double delay_reward = delayNCP(i, j, t_pe);
 					
-					//调整adjust_num个组件，终止调整
-					if (k == adjust_num) {
-						break;
+					//调整执行位置
+					double change_reward = changeNCP(i, j, t_pe);
+					
+					//调整的组件实例
+					AdjustComponent ac = new AdjustComponent();
+					ac.i = i;
+					ac.j = j;
+					
+					if (delay_reward <= change_reward) {	//延迟执行汇报优，则延迟执行
+						ac.way = 0;
+						ac.reward = delay_reward;
+					} else {	//否则改变执行位置
+						ac.way = 1;
+						ac.reward = change_reward;
 					}
 					
-					AdjustComponent adjustComponent = acList.get(k);
-					double rewar = adjustComponent.reward;
+					acList.add(ac);
 				}
+			}
+		}
 				
-				//更新所有组件的执行位置
+		//对acList进行降序排序，选择前(t_pc.number - k*r)个组件进行调整
+		//对acList进行降序排序，选择前(t_pc.number - k*r)个组件进行调整
+		sortDescByReward(acList);
+		
+		//更新所有组件的执行位置。acList.size() = t_pc.number
+		int adjust_num = t_pe.number - k*r;
+		for(int k = 0; k < acList.size(); k++) {
+			
+			//调整adjust_num个组件，终止调整
+			if (k == adjust_num) {
+				break;
+			}
+			
+			AdjustComponent adjustComponent = acList.get(k);
+			double reward = adjustComponent.reward;
+		}
+		
+		//更新所有组件的执行位置
+		
 	}
 	
 	/*
 	 * 网络资源调整——延迟执行
 	 */
-	public double delayNCP() { 
-		double reward = 0;
+	public double delayNCP(int i, int j, NetListNode t_pe) { 
+		double reward = Double.MAX_VALUE;
+		double delay_time = 0;
 		
+		NetListNode pe = netList;
+		while(pe != null) {
+			if (true) {
+				
+			}
+			pe = pe.next;
+		}
+		
+		/*CompListNode pc = compList;
+		while(pc != null) {
+			//从t_pc往后延迟，并且第一个资源不超过资源约束条件，同时还要满足组件的最迟完成时间
+			if (pc.start_time >= t_pe.start_time && pc.number < k*r) {
+				delay_time = pc.start_time - user[i].component[j].ST;	//延迟的时间
+				
+				//延迟后组件的开始时间不能小于最迟开始时间
+				if (pc.start_time > user[i].component[j].LST) {
+					return Double.MAX_VALUE;
+				}
+				break;
+			}
+			pc = pc.next;
+		}*/
+		
+		//静态功耗
+		reward = delay_time * user[i].staticPower;	
 		return reward;
 	}
 	
 	/*
 	 * 网络资源调整——改变执行位置
 	 */
-	public double changeNCP() {
+	public double changeNCP(int i, int j, NetListNode t_pe) {
 		double reward = 0;
 		
 		return reward;
@@ -881,6 +969,7 @@ public class WK {
 						}
 						System.out.println();
 					}
+					System.out.println();
 
 					line = br.readLine();
 					
@@ -909,21 +998,24 @@ public class WK {
 					if ((line = br.readLine()) != null) {
 						String[] strs = line.split(" ");
 						for (int j = 0; j < 20; j++) {
-							if (Double.valueOf(strs[j]) == 0) {
+							double val = Double.valueOf(strs[j]);
+							if (val == 0) {
 								break;
 							}
-							user[i].cpuPowerList.add(Double.valueOf(strs[j]));
+							user[i].cpuPowerList.add(val);
 						}
 					}
 					user[i].maxCPUPower = user[i].cpuPowerList.get(0);
-					System.out.println();
+					System.out.println("\n");
+					System.out.println(user[i].cpuPowerList);
+					System.out.println(user[i].maxCPUPower);
 					
 					//手机的空闲功耗值
 					if ((line = br.readLine()) != null) {
 						String[] strs = line.split(" ");
-						user[i].staticp = Double.valueOf(strs[0]);
+						user[i].staticPower = Double.valueOf(strs[0]);
 					}
-					
+					System.out.println(user[i].staticPower);
 					
 					line = br.readLine();
 					// 手机的不同发射功耗值
@@ -938,12 +1030,25 @@ public class WK {
 					}
 					user[i].maxSendPower = user[i].sendPowerList.get(0);
 					System.out.println();
+					System.out.println(user[i].sendPowerList);
+					System.out.println(user[i].maxSendPower);
 					
 					//接收功率值
 					if ((line = br.readLine()) != null) {
 						String[] strs = line.split(" ");
 						user[i].recvPower = Double.valueOf(strs[0]);
 					}
+					System.out.println(user[i].recvPower);
+					
+					line = br.readLine();
+					//用户i的截止时间
+					if ((line = br.readLine()) != null) {
+						String[] strs = line.split(" ");
+						user[i].deadline = Double.valueOf(strs[0]);
+					}
+					System.out.println(user[i].deadline);
+					
+					System.out.println("----------------------------------------------------------");
 				}
 			}
 
@@ -967,7 +1072,7 @@ public class WK {
 		
 		double fmax = 0; 	//最大频率
 		
-		double staticp = 0;		//静态功率
+		double staticPower = 0;		//静态功率
 		
 		double recvPower;		//接收功率
 		
@@ -984,6 +1089,9 @@ public class WK {
 				component[i] = new Component();
 			}
 			communication = new double[n][n];
+			
+			cpuPowerList = new ArrayList<>();
+			sendPowerList = new ArrayList<>();
 		}
 	}
 	
