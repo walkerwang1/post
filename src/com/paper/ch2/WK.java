@@ -739,11 +739,11 @@ public class WK {
 					&& pc.start_time <= user[i].component[j].LST) {
 				delay_time = pc.start_time - user[i].component[j].ST;	//延迟的时间
 				
-				//延迟后组件的开始时间不能小于最迟开始时间
-				if (pc.start_time > user[i].component[j].LST) {
-					return Double.MAX_VALUE;
-				}
 				break;
+			}
+			//延迟后组件的开始时间不能小于最迟开始时间
+			if (pc.start_time > user[i].component[j].LST) {
+				return Double.MAX_VALUE;
 			}
 			pc = pc.next;
 		}
@@ -767,34 +767,45 @@ public class WK {
 		List<Integer> preList = getPreNodeList(i, j);
 		double firstSendTime = 0;
 		for(int k = 0; k < preList.size(); k++) {
-			if (user[i].component[k].location == 0) {	//原先的发送时间
-				firstSendTime += user[i].communication[k][j] / deltaB;
+			int j_pre = preList.get(k);
+			if (user[i].component[j_pre].location == 0) {	//原先的发送时间
+				firstSendTime += user[i].communication[j_pre][j] / deltaB;
 			}
 		}
 		List<Integer> succList = getSuccNodeList(i, j);
 		double secondSendTime = 0;
 		for(int k = 0; k < succList.size(); k++) {
-			if (user[i].component[k].location == 1) {	//后来增加的发送时间
-				secondSendTime += user[i].communication[j][k] / deltaB;
+			int j_succ = succList.get(k);
+			if (user[i].component[j_succ].location == 1) {	//后来增加的发送时间
+				secondSendTime += user[i].communication[j][j_succ] / deltaB;
 			}
 		}
 		changeSendE = (secondSendTime - firstSendTime) * user[i].maxSendPower;
 		
 		//数据接收能耗：EEM模式
-		double recvTime = 0;
-		for(int k = 0; k < preList.size(); k++) {
-			if (user[i].component[k].location == 1) {
-				recvTime += user[i].communication[k][j] / deltaB;
+		double firstRecvTime = 0;
+		for(int k = 0; k < succList.size(); k++) {
+			int j_succ = succList.get(k);
+			if (user[i].component[j_succ].location == 0) {
+				firstRecvTime += user[i].communication[j][j_succ] / deltaB;
 			}
 		}
-		changeRecvE = recvTime * user[i].recvPower;
+		
+		double secondRecvTime = 0;
+		for(int k = 0; k < preList.size(); k++) {
+			int j_pre = preList.get(k);
+			if (user[i].component[j_pre].location == 1) {
+				secondRecvTime += user[i].communication[j_pre][j] / deltaB;
+			}
+		}
+		changeRecvE = (secondRecvTime - firstRecvTime) * user[i].recvPower;
 		
 		//返回终端增加的能耗
 		changeDynamicE = user[i].component[j].exetime_mobile * user[i].maxCPUPower;
 		
 		//增加的静态能耗
-		changeStaticE = user[i].staticPower * (secondSendTime - firstSendTime + recvTime -
-				user[i].component[j].exetime_mec);
+		changeStaticE = user[i].staticPower * (secondSendTime - firstSendTime + 
+				secondRecvTime - firstRecvTime - user[i].component[j].exetime_mec);
 		
 		reward = changeSendE + changeRecvE + changeDynamicE + changeStaticE;
 		return reward;
@@ -844,7 +855,7 @@ public class WK {
 						double delay_reward = delayNCP(i, j, j_succ, t_pe);
 						
 						//调整执行位置
-						double change_reward = changeNCP(i, j,j_succ, t_pe);
+						double change_reward = changeNCP(i, j, j_succ, t_pe);
 						
 						//调整的组件实例
 						AdjustComponent ac = new AdjustComponent();
@@ -854,8 +865,12 @@ public class WK {
 						if (delay_reward <= change_reward) {	//延迟执行汇报优，则延迟执行
 							ac.way = 0;
 							ac.reward = delay_reward;
-						} else {	//否则改变执行位置
-							ac.way = 1;
+						} else {	//否则改变执行位置（本地-->MEC，MEC-->本地）
+							if (user[i].component[j_succ].location == 1) {
+								ac.way = 0;
+							} if (user[i].component[j_succ].location == 0) {
+								ac.way = 1;
+							}
 							ac.reward = change_reward;
 						}
 						
@@ -895,10 +910,14 @@ public class WK {
 		
 		NetListNode pe = netList;
 		while(pe != null) {
-			if (true) {
-				
+			if (pe.start_time >= t_pe.start_time && pe.number < nch 
+					&& pe.start_time <= user[i].component[j_succ].LST) {
+				delay_time = pe.start_time - user[i].component[j].ST;
 			}
 			pe = pe.next;
+		}
+		if (pe.start_time > user[i].component[j_succ].LST) {
+			return Double.MAX_VALUE;
 		}
 		
 		//静态功耗
@@ -908,9 +927,108 @@ public class WK {
 	
 	/*
 	 * 网络资源调整——改变执行位置
+	 * 		(j,j_succ):冲突点后的节点，即改变j_succ节点位置
 	 */
 	public double changeNCP(int i, int j,int j_succ, NetListNode t_pe) {
-		double reward = 0;
+		double reward = Double.MAX_VALUE;
+		double changeSendE = 0;			//增加的数据发送能耗
+		double changeRecvE = 0;			//增加的数据接收能耗
+		double changeDynamicE = 0;		//增加的动态能耗
+		double changeStaticE  = 0;		//增加的静态能耗
+		
+		List<Integer> preList = getPreNodeList(i, j_succ);
+		List<Integer> succList = getSuccNodeList(i, j_succ);
+		
+		//组件原先执行位置为1，改变后为0
+		if (user[i].component[j_succ].location == 1) {
+			//原先的发送时间
+			double firstSendTime = 0;
+			for(int k = 0; k < preList.size(); k++) {
+				int j_succ_pre = preList.get(k);
+				if (user[i].component[j_succ_pre].location == 0) {
+					firstSendTime += user[i].communication[j_succ_pre][j_succ] / deltaB;
+				}
+			}
+			
+			//改变位置后新的发送时间
+			double secondSendTime = 0;
+			for(int k = 0; k < succList.size(); k++) {
+				int j_succ_succ = succList.get(k);
+				if (user[i].component[j_succ_succ].location == 1) {
+					secondSendTime += user[i].communication[j_succ][j_succ_succ] / deltaB;
+				}
+			}
+			changeSendE = (secondSendTime - firstSendTime) * user[i].maxSendPower;
+			
+			//旧的接收时间
+			double firstRecvTime = 0;
+			for(int k = 0; k < succList.size(); k++) {
+				int j_succ_succ = succList.get(k);
+				if (user[i].component[j_succ_succ].location == 0) {
+					firstRecvTime += user[i].communication[j_succ][j_succ_succ] / deltaB;
+				}
+			}
+			
+			//新产生的接收时间
+			double secondRecvTime = 0;
+			for(int k = 0; k < preList.size(); k++) {
+				int j_succ_pre = preList.get(k);
+				if (user[i].component[j_succ_pre].location == 1) {
+					secondRecvTime += user[i].communication[j_succ_pre][j_succ] / deltaB;
+				}
+			}
+			changeRecvE = (secondRecvTime - firstRecvTime) * user[i].recvPower;
+			
+			//返回终端增加的能耗
+			changeDynamicE = user[i].component[j_succ].exetime_mobile * user[i].maxCPUPower;
+			
+			//增加的静态能耗
+			changeStaticE = user[i].staticPower * (secondSendTime - firstSendTime + 
+					secondRecvTime - firstRecvTime - user[i].component[j].exetime_mec);
+			
+			reward = changeSendE + changeRecvE + changeDynamicE + changeStaticE;
+		}else if (user[i].component[j_succ].location == 0) { //0-->1
+			
+			double firstSendTime = 0;
+			for(int k = 0; k < succList.size(); k++) {
+				int j_succ_succ = succList.get(k);
+				if (user[i].component[j_succ_succ].location == 1) {
+					firstSendTime += user[i].communication[j_succ][j_succ_succ] / deltaB;
+				}
+			}
+			double secondSendTime = 0;
+			for(int k = 0; k < preList.size(); k++) {
+				int j_succ_pre = preList.get(k);
+				if (user[i].component[j_succ_pre].location == 0) {
+					secondSendTime += user[i].communication[j_succ_pre][j_succ] /deltaB;
+				}
+			}
+			changeSendE = (secondSendTime - firstSendTime) * user[i].maxSendPower;
+			
+			double firstRecvTime = 0;
+			for(int k = 0; k < preList.size(); k++) {
+				int j_succ_prec = preList.get(k);
+				if (user[i].component[j_succ_prec].location == 1) {
+					firstRecvTime += user[i].communication[j_succ_prec][j_succ] / deltaB;
+				}
+			}
+			
+			double secondRecvTime = 0;
+			for(int k = 0; k < succList.size(); k++) {
+				int j_succ_succ = succList.get(k);
+				if (user[i].component[j_succ_succ].location == 0) {
+					secondRecvTime += user[i].communication[j_succ][j_succ_succ] / deltaB;
+				}
+			}
+			changeRecvE = (secondRecvTime - firstRecvTime) * user[i].recvPower;
+			
+			changeDynamicE = (-1) * user[i].component[j_succ].exetime_mobile * user[i].maxCPUPower;
+			
+			changeStaticE = (secondSendTime - firstSendTime + secondRecvTime - firstRecvTime + 
+					user[i].component[j_succ].exetime_mec) * user[i].staticPower;
+			
+			reward = changeSendE + changeRecvE + changeDynamicE + changeStaticE;
+		}
 		
 		return reward;
 	}
