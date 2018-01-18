@@ -211,7 +211,7 @@ public class WK {
 	}
 	
 	/*
-	 * 得到组件的ST、FT
+	 * 根据卸载决策得到组件的ST、FT
 	 */
 	public void obtainSTandFT() {
 		for(int i = 1; i <= N; i++) {
@@ -268,7 +268,7 @@ public class WK {
 	}
 	
 	/*
-	 * 获得组件的LST、LFT
+	 * 根据卸载策略获得组件的LST、LFT
 	 */
 	public void obtainLSTandLFT() {
 		for(int i = 1; i <= N; i++) {
@@ -697,7 +697,7 @@ public class WK {
 					if (delay_reward <= change_reward) {	//延迟执行回报优，则延迟执行
 						ac.way = 0;
 						ac.reward = delay_reward;
-					} else {	//否则改变执行位置
+					} else {	//否则改变执行位置（需要知道延迟的时间）
 						ac.way = 1;
 						ac.reward = change_reward;
 					}
@@ -713,6 +713,19 @@ public class WK {
 		//更新所有组件的执行位置。acList.size() = t_pc.number
 		int adjust_num = t_pc.number - k*r;
 		for(int k = 0; k < acList.size(); k++) {
+			
+			//更新
+			AdjustComponent ac = acList.get(k);
+			int i = ac.i;
+			int j = ac.j;
+			if (ac.way == 0) {		//返回本地，更新组件的执行时间
+				user[i].component[j].location = 0;
+				//重新计算所有组件的ST、FT、LST、LFT
+				obtainTime();
+			} 
+			if (ac.way == 1) {		//延迟执行，更新组件的执行时间
+				
+			}
 			
 			//调整adjust_num个组件，终止调整
 			if (k == adjust_num) {
@@ -860,15 +873,19 @@ public class WK {
 						//调整的组件实例
 						AdjustComponent ac = new AdjustComponent();
 						ac.i = i;
-						ac.j = j;
+						ac.j = j_succ;
 						
 						if (delay_reward <= change_reward) {	//延迟执行汇报优，则延迟执行
 							ac.way = 0;
+							
+							ac.delay = 1;
 							ac.reward = delay_reward;
 						} else {	//否则改变执行位置（本地-->MEC，MEC-->本地）
 							if (user[i].component[j_succ].location == 1) {
+								ac.change = 1;	//表示改变了执行位置
 								ac.way = 0;
 							} if (user[i].component[j_succ].location == 0) {
+								ac.change = 1;	//表示改变了执行位置
 								ac.way = 1;
 							}
 							ac.reward = change_reward;
@@ -888,17 +905,28 @@ public class WK {
 		int adjust_num = t_pe.number - k*r;
 		for(int k = 0; k < acList.size(); k++) {
 			
+			AdjustComponent ac = acList.get(k);
+			int i = ac.i;
+			int j = ac.j;
+			if (ac.change == 1) {	
+				if (ac.way == 1) {	//改变执行位置，且从0-->1
+					user[i].component[j].location = 1;
+					obtainTime();
+				}
+				if (ac.way == 0) {	//改变执行位置，且从1-->0
+					user[i].component[j].location = 1;
+					obtainTime();
+				}
+			} else {	//延迟执行
+				
+			}
+			
 			//调整adjust_num个组件，终止调整
 			if (k == adjust_num) {
 				break;
 			}
-			
-			AdjustComponent adjustComponent = acList.get(k);
-			double reward = adjustComponent.reward;
 		}
-		
-		//更新所有组件的执行位置
-		
+		acList = null;
 	}
 	
 	/*
@@ -1288,5 +1316,8 @@ public class WK {
 		
 		double reward;		//回报值
 		int    way;		//0-延迟执行；1-调整执行位置
+		
+		int delay = -1;		//delay = 1， 表示延迟
+		int change = -1;		//chang = 1, 表示改变位置
 	}
 }
