@@ -22,15 +22,15 @@ import java.util.List;
  */
 public class WK {
 	
-	static int N = 1;		//用户个数
+	static int N = 2;		//用户个数
 	static int n = 7 + 2;	//组件个数
 	
 	static double B = 240;		//网络带宽
-	static int nch = 8;			//网络子信道个数
+	static int nch = 1;			//网络子信道个数
 	static double deltaB = 1;	//每个信道的带宽。（数据上传带宽，数据下载带宽）
 	
-	static int k = 0;		//MEC服务器个数
-	static int r = 0;		//每个服务器的核数
+	static int k = 2;		//MEC服务器个数
+	static int r = 2;		//每个服务器的核数
 	
 	double T = 0;			//初始时间片[0,T]，T为所有用户的最大完成时间
 	
@@ -62,7 +62,7 @@ public class WK {
 		initOffloadingResult();
 		
 		//2-资源调整过程
-//		searchAndAdjust();
+		searchAndAdjust();
 		
 		//3-DVFS调节
 //		dvfs();
@@ -199,7 +199,8 @@ public class WK {
 	
 	
 	/*
-	 * 根据决策计算组件的ST,FT,LST,LFT。（根据模型）
+	 * 根据决策计算组件的ST,FT,LST,LFT
+	 * 知道卸载决策后，根据模型计算
 	 */
 	public void obtainTime() {
 		
@@ -264,6 +265,8 @@ public class WK {
 					user[i].component[j].FT = 0;
 				} 
 			}
+			
+			user[i].completiontime = user[i].component[n-1].FT;
 		}
 	}
 	
@@ -336,6 +339,7 @@ public class WK {
 	 * 输出卸载结果
 	 */
 	public void printInitResult() {
+		System.out.println("组件的执行时间：");
 		for(int i = 1; i <= N; i++) {
 			for(int j = 0; j < n; j++) {
 				System.out.println("组件(" + i + "," + j + "): 执行位置:" + user[i].component[j].location +
@@ -358,11 +362,20 @@ public class WK {
 		//获得初始时间片[0,T]，T表示所有用户中最大的完成时间
 		T = obtainMaxTime();
 		
+		System.out.println("最大完成时间:" + T);
+		
 		//获取计算资源占用链表compList
 		obtainCompList();
 		
 		//获取网络资源占用链表netList
 		obtainNetList();
+		
+		//计算每个时间片内组件占用个数
+		obtainTimeslotNum();
+		
+		//输出计算资源和网络资源占用链表
+		printCompList();
+		printNetList();
 		
 		CompListNode t_pc;	//计算资源冲突的关键时间点
 		NetListNode t_pe;	//网络资源冲突的关键时间点
@@ -378,16 +391,21 @@ public class WK {
 			//搜索网络资源冲突的第一个关键点
 			t_pe = searchFirstNCP();
 			
-			if (t_pc.start_time < t_pe.start_time) {	//调整计算资源冲突
+			System.out.println("计算资源冲突关键点：" + t_pc + ";开始时间：" + t_pc.start_time);
+			System.out.println("网络资源冲突关键点：" + t_pe + ";开始时间：" + t_pe.start_time);
+			
+			/*if (t_pc.start_time < t_pe.start_time) {	//调整计算资源冲突
 				adjustCCP(t_pc);
 			} else {	//调整网络资源冲突
 				adjustNCP(t_pe);
-			}
+			}*/
+			
+			break;
 			
 			//t_ccp = t_ncp = null，表示计算资源和网络资源都不存在冲突
-			if (t_pc == null && t_pe == null) {
+			/*if (t_pc == null && t_pe == null) {
 				break;
-			}
+			}*/
 		}
 	}
 	
@@ -445,9 +463,8 @@ public class WK {
 							
 							//时间片划分后下次需要重新遍历compList，compList永远指向头节点
 							pc = compList;
-							
-							break;		//跳出while循环
-						} else if (user[i].component[j].FT > pc.start_time &&
+						}
+						if (user[i].component[j].FT > pc.start_time &&
 								user[i].component[j].FT < pc.end_time) {	//根据FT划分时间片
 							
 							//节点划分（时间片划分）
@@ -455,11 +472,9 @@ public class WK {
 							
 							//时间片划分后下次需要重新遍历compList
 							pc = compList;
-							
 							break;		//跳出while循环
-						} else {
-							pc = pc.next;
-						}
+						} 
+						pc = pc.next;
 					}
 				}
 			}
@@ -478,10 +493,8 @@ public class WK {
 			for(int j = 0; j < n; j++) {
 				for(int k = j; k < n; k++) {
 					//存在传输的前提条件，即存在数据发送和数据接收
-					if ((user[i].communication[j][k] > 0 && user[i].component[j].location == 0 && 
-							user[i].component[k].location == 1) || 
-						(user[i].communication[j][k] > 0 && user[i].component[j].location == 1 && 
-							user[i].component[k].location == 0)) {
+					if ((user[i].communication[j][k] > 0 && Math.abs(user[i].component[j].location - 
+							user[i].component[k].location) == 1)) {
 						//组件之间存在传输，数据处于发送或者接收状态
 						
 						NetListNode pe = netList;
@@ -489,11 +502,11 @@ public class WK {
 							if (user[i].component[j].FT > pe.start_time &&
 									user[i].component[j].FT < pe.end_time) {	//根据(j,k)中j的完成时间进行划分
 								//网路资源时间片划分
-								timeslotPartitionComp(user[i].component[j].FT, pe.start_time, pe.end_time);
+								timeslotPartitionNet(user[i].component[j].FT, pe.start_time, pe.end_time);
 								
 								pe = netList;
-								break;		//跳出while循环
-							} else if (user[i].component[k].ST > pe.start_time &&
+							} 
+							if (user[i].component[k].ST > pe.start_time &&
 									user[i].component[k].ST < pe.end_time) {	//根据(j,k)中j的完成时间进行划分
 								
 								//网络资源时间片划分
@@ -526,6 +539,8 @@ public class WK {
 			
 			node1.next = node2; node2.next = null;
 			compList = node1;
+			
+			return;
 		}
 		
 		pc = pc_pre.next;
@@ -586,19 +601,19 @@ public class WK {
 	 * 统计每个时间片中组件的个数（包括开始时间，不包括结束时间）
 	 */
 	public void obtainTimeslotNum() {
-		
+		printCompList();
 		CompListNode pc = compList;
 		//获取计算资源占用链表每个时间片的number
 		for(int i = 1; i <= N; i++) {
 			for(int j = 0; j < n; j++) {
+				pc = compList;		//每次遍历完后pc需要重新开始赋值
 				if (user[i].component[j].location == 1) {
 					while(pc != null) {
 						if (pc.start_time >= user[i].component[j].ST 
 								&& pc.end_time <= user[i].component[j].FT) {
 							pc.number++;
-						} else {
-							pc = pc.next;
-						}
+						} 
+						pc = pc.next;
 					}
 				}
 			}
@@ -608,6 +623,7 @@ public class WK {
 		//获取网络资源占用链表每个时间片的number
 		for(int i = 1; i <= N; i++) {
 			for(int j = 0; j < n; j++) {
+				pe = netList;
 				for(int k = j; k < n; k++) {
 					if ((user[i].communication[j][k] > 0 && user[i].component[j].location == 0 && 
 							user[i].component[k].location == 1) || 
@@ -619,9 +635,8 @@ public class WK {
 							if (pe.start_time >= user[i].component[j].FT &&
 									pe.end_time <= user[i].component[k].ST) {
 								pe.number++;
-							} else {
-								pe = pe.next;
-							}
+							} 
+							pe = pe.next;
 						}
 					}
 				}
@@ -1061,6 +1076,42 @@ public class WK {
 		return reward;
 	}
 	
+	/*
+	 * 输出计算资源链表
+	 */
+	public void printCompList() {
+		System.out.println("----------------------------------------------------------");
+		System.out.println("计算资源占用链表：");
+		CompListNode pc = compList;
+		while(pc != null) {
+			if (pc.next != null) {
+				System.out.print(pc.toString() + "-->");
+			} else {
+				System.out.print(pc.toString());
+			}
+			pc = pc.next;
+		}
+		System.out.println();
+	}
+	
+	/*
+	 * 输出网络资源链表
+	 */
+	public void printNetList() {
+		System.out.println("\n网络资源占用链表：");
+		NetListNode pe = netList;
+		while(pe != null) {
+			if (pe.next != null) {
+				System.out.print(pe.toString() + "-->");
+			} else {
+				System.out.print(pe.toString());
+			}
+			pe = pe.next;
+		}
+		System.out.println();
+		System.out.println("----------------------------------------------------------");
+	}
+	
 	//---------------------------2-资源调整过程-end--------------------------
 	
 	
@@ -1279,7 +1330,7 @@ public class WK {
 		
 		@Override
 		public String toString() {
-			return start_time + "-" + end_time + "-" + number;
+			return "(" + start_time + ", " + end_time + ", " + number + ")";
 		}
 	}
 	
@@ -1303,7 +1354,7 @@ public class WK {
 		
 		@Override
 		public String toString() {
-			return start_time + "-" + end_time + "-" + number;
+			return "(" + start_time + ", " + end_time + ", " + number + ")" ;
 		}
 	}
 	
