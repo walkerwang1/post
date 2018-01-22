@@ -10,6 +10,7 @@ import java.util.ArrayList;
 import java.util.Collections;
 import java.util.Comparator;
 import java.util.List;
+import java.util.concurrent.locks.ReadWriteLock;
 
 /*
  * cd e:/workspace/post/src/com/paper/
@@ -64,8 +65,11 @@ public class WK {
 		//2-资源调整过程
 		searchAndAdjust();
 		
+		//根据最终卸载结果得到初始能耗
+		obtainEnergy();
+		
 		//3-DVFS调节
-//		dvfs();
+		dvfs();
 		
 		//4-终端发送功率控制
 //		powerControl();
@@ -391,14 +395,14 @@ public class WK {
 			//搜索网络资源冲突的第一个关键点
 			t_pe = searchFirstNCP();
 			
-			System.out.println("计算资源冲突关键点：" + t_pc + ";开始时间：" + t_pc.start_time);
-			System.out.println("网络资源冲突关键点：" + t_pe + ";开始时间：" + t_pe.start_time);
+			System.out.println("计算资源冲突关键点：" + t_pc + ";  冲突点开始时间：" + t_pc.start_time);
+			System.out.println("网络资源冲突关键点：" + t_pe + ";  冲突点开始时间：" + t_pe.start_time);
 			
-			/*if (t_pc.start_time < t_pe.start_time) {	//调整计算资源冲突
+			if (t_pc.start_time < t_pe.start_time) {	//调整计算资源冲突
 				adjustCCP(t_pc);
 			} else {	//调整网络资源冲突
 				adjustNCP(t_pe);
-			}*/
+			}
 			
 			break;
 			
@@ -408,21 +412,6 @@ public class WK {
 			}*/
 		}
 	}
-	
-	/*
-	 * 3-DVFS调节（对在本地执行的组件）
-	 */
-	public void dvfs() {
-		
-	}
-	
-	/*
-	 * 4-移动设备发送功率控制（对有数据传输到mec的组件）
-	 */
-	public void powerControl() {
-		
-	}
-	
 	
 	//---------------------------2-资源调整过程-start--------------------------
 	/*
@@ -698,20 +687,26 @@ public class WK {
 				//组件在MEC执行，且组件的执行时间包含时间片t_pc
 				if(user[i].component[j].location == 1 && user[i].component[j].ST <= t_pc.start_time 
 						&& user[i].component[j].FT >= t_pc.end_time) {
-					//延迟执行组件
-					double delay_reward = delayCCP(i,j,t_pc);
-					
-					//调整执行位置
-					double change_reward = changeCCP(i,j,t_pc);
-					
 					//调整的组件实例
 					AdjustComponent ac = new AdjustComponent();
 					ac.i = i;
 					ac.j = j;
 					
+					//延迟执行组件
+					double delay_reward = delayCCP(i,j,t_pc,ac);
+					
+					//调整执行位置
+					double change_reward = changeCCP(i,j,t_pc);
+					
+					System.out.println("延迟执行回报值：" + delay_reward);
+					System.out.println("改变执行位置回报值：" + change_reward);
+					
+					
 					if (delay_reward <= change_reward) {	//延迟执行回报优，则延迟执行
 						ac.way = 0;
 						ac.reward = delay_reward;
+						
+						ac.delay_time = 0;
 					} else {	//否则改变执行位置（需要知道延迟的时间）
 						ac.way = 1;
 						ac.reward = change_reward;
@@ -739,6 +734,7 @@ public class WK {
 				obtainTime();
 			} 
 			if (ac.way == 1) {		//延迟执行，更新组件的执行时间
+				double delay_time = ac.delay_time;
 				
 			}
 			
@@ -756,7 +752,7 @@ public class WK {
 	 * 计算资源调整——延迟执行
 	 * 		返回：延迟执行增加的能耗，越小越好
 	 */
-	public double delayCCP(int i, int j, CompListNode t_pc) {
+	public double delayCCP(int i, int j, CompListNode t_pc, AdjustComponent ac) {
 		double reward = Double.MAX_VALUE;
 		double delay_time = 0;
 		
@@ -775,6 +771,8 @@ public class WK {
 			}
 			pc = pc.next;
 		}
+		
+		ac.delay_time = delay_time;
 		
 		//静态功耗
 		reward = delay_time * user[i].staticPower;	
@@ -853,11 +851,12 @@ public class WK {
 	public class MyComparator implements Comparator<AdjustComponent> {
 		@Override
 		public int compare(AdjustComponent o1, AdjustComponent o2) {
-			if (o1.reward < o2.reward) {
+			return o2.reward < o1.reward ? -1 : (o2.reward == o1.reward) ? 0 : 1;
+			/*if (o1.reward < o2.reward) {
 				return 1;
 			} else {
 				return 0;
-			}
+			}*/
 		}
 	}
 	
@@ -870,25 +869,32 @@ public class WK {
 		//3-调整之后更新组件的实际执行情况
 		
 		List<AdjustComponent > acList = new ArrayList<>();
+			int cnt = 0; 	//记录已经调整的组件个数
 		
-		for(int i = 1; i <= N; i++) {
-			for(int j = 0; j < n; j++) {
+			for(int i = 1; i <= N; i++) {
+				for(int j = 0; j < n; j++) {	
 				
 				List<Integer> list = getSuccNodeList(i, j);
 				for(int k = 0; k < list.size(); k++) {
 					int j_succ = list.get(k);
 					//组件(i,j)和后继组件的执行位置不一样，表示有数据处于发送/接收阶段
-					if (Math.abs(user[i].component[j].location - user[i].component[j_succ].location) == 1) {
-						//延迟执行组件
-						double delay_reward = delayNCP(i, j, j_succ, t_pe);
-						
-						//调整执行位置
-						double change_reward = changeNCP(i, j, j_succ, t_pe);
-						
+					if (Math.abs(user[i].component[j].location - user[i].component[j_succ].location) == 1 &&
+							user[i].component[j].FT <= t_pe.start_time && 
+							user[i].component[j_succ].ST >= t_pe.end_time) {	//判断当前冲突点t_pe
 						//调整的组件实例
 						AdjustComponent ac = new AdjustComponent();
 						ac.i = i;
 						ac.j = j_succ;
+						
+						//延迟执行组件
+						double delay_reward = delayNCP(i, j, j_succ, t_pe, ac);
+						
+						//调整执行位置
+						double change_reward = changeNCP(i, j, j_succ, t_pe);
+						
+						System.out.println("延迟执行回报值：" + delay_reward);
+						System.out.println("改变执行位置回报值：" + change_reward);
+						
 						
 						if (delay_reward <= change_reward) {	//延迟执行汇报优，则延迟执行
 							ac.way = 0;
@@ -909,21 +915,33 @@ public class WK {
 						acList.add(ac);
 					}
 				}
+//				if (cnt == t_pe.number) {
+//					break outterLoop;		//使用标号可以直接跳出两层for循环
+//				}
 			}
 		}
-				
+		
+		
 		//对acList进行降序排序，选择前(t_pe.number - nch)个组件进行调整
 		//对acList进行降序排序，选择前(t_pe.number - nch)个组件进行调整
+			acList.get(1).reward += 1;
 		sortDescByReward(acList);
 		
+		for(int i = 0; i < acList.size(); i++) {
+			AdjustComponent ac = acList.get(i);
+			System.out.print("(" + ac.i + "," + ac.j + "," + ac.way + "," + ac.reward + ")");
+		
+		}
+		
 		//更新所有组件的执行位置。acList.size() = t_pc.number
-		int adjust_num = t_pe.number - k*r;
+		int adjust_num = t_pe.number - nch;		//需调整的组件个数
+		
 		for(int k = 0; k < acList.size(); k++) {
 			
 			AdjustComponent ac = acList.get(k);
 			int i = ac.i;
 			int j = ac.j;
-			if (ac.change == 1) {	
+			if (ac.change == 1) {		//change=1 表示改变了执行位置，分为0->1， 1->0
 				if (ac.way == 1) {	//改变执行位置，且从0-->1
 					user[i].component[j].location = 1;
 					obtainTime();
@@ -933,7 +951,11 @@ public class WK {
 					obtainTime();
 				}
 			} else {	//延迟执行
+				//需要知道延迟的时间是多少
+				double delay_time = ac.delay_time;
+				System.out.println(delay_time);
 				
+				updateExeTime(i,j,delay_time);
 			}
 			
 			//调整adjust_num个组件，终止调整
@@ -942,12 +964,13 @@ public class WK {
 			}
 		}
 		acList = null;
+		
 	}
 	
 	/*
-	 * 网络资源调整——延迟执行
+	 * 网络资源调整——延迟执行。（延迟执行也分为本地延迟执行和mec延迟执行？）
 	 */
-	public double delayNCP(int i, int j, int j_succ, NetListNode t_pe) { 
+	public double delayNCP(int i, int j, int j_succ, NetListNode t_pe, AdjustComponent ac) { 
 		double reward = Double.MAX_VALUE;
 		double delay_time = 0;
 		
@@ -956,15 +979,21 @@ public class WK {
 			if (pe.start_time >= t_pe.start_time && pe.number < nch 
 					&& pe.start_time <= user[i].component[j_succ].LST) {
 				delay_time = pe.start_time - user[i].component[j].ST;
+				break;
 			}
 			pe = pe.next;
 		}
-		if (pe.start_time > user[i].component[j_succ].LST) {
+		if (pe != null && pe.start_time > user[i].component[j_succ].LST) {
 			return Double.MAX_VALUE;
 		}
+		ac.delay_time = delay_time;
 		
 		//静态功耗
-		reward = delay_time * user[i].staticPower;	
+		if(user[i].component[j_succ].location == 0) {	//local延迟
+			reward = delay_time * user[i].maxCPUPower;
+		} else {	//mec延迟
+			reward = delay_time * user[i].staticPower;	
+		}
 		return reward;
 	}
 	
@@ -1077,6 +1106,13 @@ public class WK {
 	}
 	
 	/*
+	 * 组件延迟执行更新组件的执行时间
+	 */
+	public void updateExeTime(int i, int j, double delay_time) {
+		
+	}
+	
+	/*
 	 * 输出计算资源链表
 	 */
 	public void printCompList() {
@@ -1115,13 +1151,48 @@ public class WK {
 	//---------------------------2-资源调整过程-end--------------------------
 	
 	
+	/*
+	 * 根据最终卸载结果得到初始能耗
+	 */
+	public void obtainEnergy() {
+		
+	}
+	
 	//---------------------------3-DVFS调节-start--------------------------
 	
+	/*
+	 * 3-DVFS调节（对在本地执行的组件）
+	 */
+	public void dvfs() {
+		for(int i = 1; i <= N; i++) {
+			for(int j = 0; j < n; j++) {
+				if (user[i].component[j].location == 0) {
+					dvfs(i,j);
+				}
+			}
+		}
+	}
+	
+	/*
+	 * 对组件(i,j)采用DVFS技术调节
+	 */
+	public void dvfs(int i, int j) {
+		for(int k = 1; k < user[i].cpuPowerList.size(); k++) {
+			
+		}
+	}
+
 	//---------------------------3-DVFS调节-end----------------------------
 	
 	
 	//---------------------------4-终端发送功率控制-start--------------------------
 	
+	/*
+	 * 4-移动设备发送功率控制（对有数据传输到mec的组件）
+	 */
+	public void powerControl() {
+		
+	}
 	//---------------------------4-终端发送功率控制-end----------------------------
 	
 	/*
@@ -1370,5 +1441,7 @@ public class WK {
 		
 		int delay = -1;		//delay = 1， 表示延迟
 		int change = -1;		//chang = 1, 表示改变位置
+		
+		double delay_time = 0; 	//记录延迟的时间，后期调整时更新时使用
 	}
 }
