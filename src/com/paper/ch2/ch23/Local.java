@@ -1,4 +1,4 @@
-package com.paper.ch2;
+package com.paper.ch2.ch23;
 
 import java.io.BufferedReader;
 import java.io.File;
@@ -20,9 +20,9 @@ import java.util.List;
  * walkerwang1
  * wang07181110
  */
-public class WK {
+public class Local {
 	
-	static int N = 2;		//用户个数
+	static int N = 200;		//用户个数
 	static int n = 7 + 2;	//组件个数
 	
 	static double B = 32;		//网络带宽
@@ -48,7 +48,7 @@ public class WK {
 	
 	// 主函数
 	public static void main(String[] args) {
-		WK wk = new WK();
+		Local wk = new Local();
 		wk.run();
 	}
 	
@@ -60,23 +60,36 @@ public class WK {
 		//读取配置文件
 		readInputFile();
 		
-		//1-初始卸载策略
-		initOffloadingResult();
-		
-		//2-资源调整过程
-		searchAndAdjust();
+		//用户迁移结果
+		local();
 		
 		//根据最终卸载结果得到初始能耗
-		obtainEnergy1();
-		
-		//3-DVFS调节
-		dvfs();
-		
-		//4-终端发送功率控制
-		powerControl();
-		
-		obtainEnergy2();
+		compEnergy();
 	}
+	
+	public void local() {
+		for(int i = 1; i <= N; i++) {
+			for(int j = 0; j < n; j++) {
+				user[i].component[j].location = 0;
+			}
+		}
+	}
+	
+	/*
+	 * 根据初始迁移结果得到的能耗
+	 */
+	public void compEnergy() {
+		
+		//处理器能耗
+		for(int i = 1; i <= N; i++) {
+			for(int j = 0; j < n; j++) {
+				totalEnergy += user[i].maxCPUPower * user[i].component[j].exetime_mobile;
+			}
+		}
+				
+		System.out.println("本地执行的能耗：" + totalEnergy / N / 1000);
+	}
+	
 	
 	/*
 	 * 1-初始卸载策略
@@ -1304,9 +1317,9 @@ public class WK {
 
 				user[i] = new User();
 
-				URL dir = WK.class.getResource(""); // 
+				URL dir = Local.class.getResource(""); // 
 				// 用户i的配置文件
-				String filePath = dir.toString().substring(5) + "User" + i + ".txt";
+				String filePath = dir.toString().substring(5) + "User" + (i % 3 + 1) + ".txt";
 				File file = new File(filePath);
 				if (file.exists() && file.isFile()) {
 					InputStreamReader isr = new InputStreamReader(new FileInputStream(file), "utf-8");

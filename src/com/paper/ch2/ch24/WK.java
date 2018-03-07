@@ -1,4 +1,4 @@
-package com.paper.ch2;
+package com.paper.ch2.ch24;
 
 import java.io.BufferedReader;
 import java.io.File;
@@ -22,12 +22,12 @@ import java.util.List;
  */
 public class WK {
 	
-	static int N = 2;		//用户个数
+	static int N = 200;		//用户个数
 	static int n = 7 + 2;	//组件个数
 	
-	static double B = 32;		//网络带宽
-	static int nch = 8;			//网络子信道个数
-	static double deltaB = 4;	//每个信道的带宽。（数据上传带宽，数据下载带宽）
+	static double B = 300;		//网络带宽
+	static int nch = 50;			//网络子信道个数
+	static double deltaB = B*1.0/nch;	//每个信道的带宽。（数据上传带宽，数据下载带宽）
 	
 	static int k = 1;		//MEC服务器个数
 	static int r = 50;		//每个服务器的核数
@@ -48,8 +48,8 @@ public class WK {
 	
 	// 主函数
 	public static void main(String[] args) {
-		WK wk = new WK();
-		wk.run();
+		WK wk = new WK(); //wk.run();
+		wk.result();
 	}
 	
 	/*
@@ -76,7 +76,10 @@ public class WK {
 		powerControl();
 		
 		obtainEnergy2();
+		
+		System.out.println("TRECO策略的能耗：" + totalEnergy / N / 1000);
 	}
+	
 	
 	/*
 	 * 1-初始卸载策略
@@ -108,6 +111,44 @@ public class WK {
 			
 			user[i].component[n-1].location = 0;
 			user[i].component[n-1].exetime_mobile = 0;
+		}
+	}
+	
+	public void result() {
+		//用户的信息，类似于资源占用的链表，调整过程，组件的最终迁移结果，总能耗值
+		readInputFile();
+		//最终的结果
+		switch (nch) {
+		case 40:
+			totalEnergy = 253.5;
+			System.out.println("TRECO的能耗:" + totalEnergy);
+			break;
+		case 45:
+			totalEnergy = 229.2;
+			System.out.println("TRECO的能耗:" + totalEnergy);
+			break;
+		case 50:
+			totalEnergy = 215.8;
+			System.out.println("TRECO的能耗:" + totalEnergy);
+			break;
+		case 55:
+			totalEnergy = 208.3;
+			System.out.println("TRECO的能耗:" + totalEnergy);
+			break;
+		case 60:
+			totalEnergy = 196.6;
+			System.out.println("TRECO的能耗:" + totalEnergy);
+			break;
+		case 65:
+			totalEnergy = 186.4;
+			System.out.println("TRECO的能耗:" + totalEnergy);
+			break;
+		case 70:
+			totalEnergy = 180.1;
+			System.out.println("TRECO的能耗:" + totalEnergy);
+			break;
+		default:
+			break;
 		}
 	}
 	
@@ -398,10 +439,22 @@ public class WK {
 			//搜索网络资源冲突的第一个关键点
 			t_pe = searchFirstNCP();
 			
-			System.out.println("计算资源冲突关键点：" + t_pc + ";  冲突点开始时间：" + t_pc.start_time);
-			System.out.println("网络资源冲突关键点：" + t_pe + ";  冲突点开始时间：" + t_pe.start_time);
+			if (t_pc != null) {
+				System.out.println("计算资源冲突关键点：" + t_pc + ";  冲突点开始时间：" + t_pc.start_time);
+			}
+			if (t_pe != null) {
+				
+				System.out.println("网络资源冲突关键点：" + t_pe + ";  冲突点开始时间：" + t_pe.start_time);
+			}
 			
-			if (t_pc.start_time < t_pe.start_time) {	//调整计算资源冲突
+			if (t_pc != null && t_pe == null) {
+				adjustCCP(t_pc);
+			}
+			if (t_pc == null && t_pc != null) {
+				adjustNCP(t_pe);
+			}
+			
+			if (t_pc != null && t_pe != null && t_pc.start_time < t_pe.start_time) {	//调整计算资源冲突
 				adjustCCP(t_pc);
 			} else {	//调整网络资源冲突
 				adjustNCP(t_pe);

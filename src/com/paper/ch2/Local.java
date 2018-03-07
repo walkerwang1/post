@@ -20,17 +20,17 @@ import java.util.List;
  * walkerwang1
  * wang07181110
  */
-public class WK {
+public class Local {
 	
 	static int N = 2;		//用户个数
 	static int n = 7 + 2;	//组件个数
 	
-	static double B = 32;		//网络带宽
-	static int nch = 8;			//网络子信道个数
-	static double deltaB = 4;	//每个信道的带宽。（数据上传带宽，数据下载带宽）
+	static double B = 240;		//网络带宽
+	static int nch = 1;			//网络子信道个数
+	static double deltaB = 1;	//每个信道的带宽。（数据上传带宽，数据下载带宽）
 	
 	static int k = 1;		//MEC服务器个数
-	static int r = 50;		//每个服务器的核数
+	static int r = 2;		//每个服务器的核数
 	
 	double T = 0;			//初始时间片[0,T]，T为所有用户的最大完成时间
 	
@@ -42,13 +42,11 @@ public class WK {
 	
 	NetListNode netList;		//网络资源占用链表的头节点
 	
-	double totalEnergy; 	//当前总的能耗
-	
 	DecimalFormat df = new DecimalFormat("#.0000"); // 用户格式化数据，double输出保留二位小数
 	
 	// 主函数
 	public static void main(String[] args) {
-		WK wk = new WK();
+		Local wk = new Local();
 		wk.run();
 	}
 	
@@ -67,15 +65,13 @@ public class WK {
 		searchAndAdjust();
 		
 		//根据最终卸载结果得到初始能耗
-		obtainEnergy1();
+		obtainEnergy();
 		
 		//3-DVFS调节
 		dvfs();
 		
 		//4-终端发送功率控制
-		powerControl();
-		
-		obtainEnergy2();
+//		powerControl();
 	}
 	
 	/*
@@ -554,7 +550,7 @@ public class WK {
 	}
 	
 	/*
-	 * 根据时间进行时间片划分网络资源:[0,T]---->[0,a],[a,b],[b,T]
+	 * 根据时间进行时间片划分网络资源:[0,T]----> [0,a],[a,b],[b,T]
 	 */
 	public void timeslotPartitionNet(double time, double start_time, double end_time) {
 		//先要在netList中定位到该节点，及划分pe节点
@@ -1155,64 +1151,10 @@ public class WK {
 	
 	
 	/*
-	 * 根据初始迁移结果得到的能耗
+	 * 根据最终卸载结果得到初始能耗
 	 */
-	public void obtainEnergy1() {
-		double mobileTime = 0;		//统计在组件在本地的执行时间
+	public void obtainEnergy() {
 		
-		//处理器能耗
-		for(int i = 1; i <= N; i++) {
-			for(int j = 0; j < n; j++) {
-				if (user[i].component[j].location == 0) {
-					mobileTime += user[i].component[j].exetime_mobile;
-				}
-			}
-			
-			totalEnergy += mobileTime * user[i].maxCPUPower;	//CPU计算能耗
-			
-			totalEnergy += (T - mobileTime) * user[i].staticPower;		//CPU空闲能耗
-		}
-		
-		//网络接口能耗
-		for(int i = 1; i <= N; i++) {
-			for(int j = 0; j < n; j++) {
-				//当组件在本地执行时，才考虑传输能耗
-				if (user[i].component[j].location == 0) {
-
-					//发送能耗
-					List<Integer> succList = getSuccNodeList(i, j);
-					if (succList != null && succList.size() > 0) {
-						for(int k = 0; k < succList.size(); k++) {
-							int j_succ = succList.get(k);
-							if (user[i].component[j_succ].location == 1) {
-								totalEnergy += user[i].communication[j][j_succ] / deltaB * user[i].maxSendPower;
-							}
-						}
-					}
-					
-					//接收能耗
-					List<Integer> preList= getPreNodeList(i, j);
-					if (preList != null && preList.size() > 0) {
-						for(int k = 0; k < preList.size(); k++) {
-							int j_pre = preList.get(k);
-							if (user[i].component[j_pre].location ==1) {
-								totalEnergy += user[i].communication[j_pre][j] / deltaB * user[i].recvPower;
-							}
-						}
-					}
-				}
-			}
-		}
-		
-		System.out.println("经过2个步骤后的能耗：" + totalEnergy);
-	}
-	
-	/*
-	 * 经DVFS和功率控制后得到的能耗
-	 */
-	public void obtainEnergy2() {
-		
-		System.out.println("经过4个步骤后的能耗：" + totalEnergy);
 	}
 	
 	//---------------------------3-DVFS调节-start--------------------------
@@ -1222,7 +1164,7 @@ public class WK {
 	 */
 	public void dvfs() {
 		for(int i = 1; i <= N; i++) {
-			for(int j = 0; j < n; j++) {	//如果用户组件在移动设备上执行
+			for(int j = 0; j < n; j++) {
 				if (user[i].component[j].location == 0) {
 					dvfs(i,j);
 				}
@@ -1234,64 +1176,21 @@ public class WK {
 	 * 对组件(i,j)采用DVFS技术调节
 	 */
 	public void dvfs(int i, int j) {
-		if (user[i].component[j].FT < user[i].component[j].LFT) {	//有空闲时间
-			for(int k = 1; k < user[i].cpuPowerList.size(); k++) {
-				//在新工作频率下新的执行时间
-				double newExeTime = (user[i].cpuPowerList.get(k) * user[i].component[j].exetime_mobile ) 
-						/ user[i].maxCPUPower;
-				double newFT = user[i].component[j].ST + newExeTime;
-				if (newFT < user[i].component[j].LFT) {		//表示调整频率后LFT依然满足
-					//更新组件的完成时间
-					user[i].component[j].FT = newFT;
-					
-					//更新总的能耗值
-					totalEnergy = totalEnergy - (user[i].component[j].exetime_mobile * user[i].maxCPUPower) +
-							(newExeTime * user[i].cpuPowerList.get(k));
-				}
-			}
+		for(int k = 1; k < user[i].cpuPowerList.size(); k++) {
+			
 		}
 	}
+
 	//---------------------------3-DVFS调节-end----------------------------
 	
 	
-	
 	//---------------------------4-终端发送功率控制-start--------------------------
+	
 	/*
 	 * 4-移动设备发送功率控制（对有数据传输到mec的组件）
 	 */
 	public void powerControl() {
-		for(int i=1; i <= N; i++) {
-			
-			//当前组件在本地执行，后继组件在MEC执行
-			for(int j = 0; j < n-1; j++) {	
-				if(user[i].component[j].location == 0) {
-					//当前组件在本地执行，则获取后继组件
-					List<Integer> succList = getSuccNodeList(i, j);	
-					for(int k = 0; k < succList.size(); k++) {
-						int j_succ = succList.get(k);
-						
-						//后继组件在MEC执行，存在数据传输
-						if (user[i].component[j_succ].location == 1) {	
-							for(int m = 1; m < user[i].sendPowerList.size();m++) {
-								double newSendTime = (user[i].communication[j][j_succ] / deltaB * user[i].sendPowerList.get(m)) / 
-										user[i].maxSendPower;
-								double newST = user[i].component[j].FT + newSendTime;
-								
-								//传输过程存在空闲时间
-								if(newST < user[i].component[j_succ].LST) {
-									//更新组件的时间
-									user[i].component[j_succ].ST = newST;
-									
-									//更新总的能耗值
-									totalEnergy = totalEnergy - (user[i].maxSendPower * (user[i].communication[j][j_succ] / deltaB)) 
-											+ (user[i].sendPowerList.get(m) * newSendTime);
-								}
-							}
-						}
-					}
-				}
-			}
-		}
+		
 	}
 	//---------------------------4-终端发送功率控制-end----------------------------
 	
@@ -1304,7 +1203,7 @@ public class WK {
 
 				user[i] = new User();
 
-				URL dir = WK.class.getResource(""); // 
+				URL dir = Local.class.getResource(""); // 
 				// 用户i的配置文件
 				String filePath = dir.toString().substring(5) + "User" + i + ".txt";
 				File file = new File(filePath);
@@ -1426,6 +1325,7 @@ public class WK {
 		double completiontime;	//应用i的实际完成时间
 		
 		double deadline;		//应用i的截止时间
+		
 		double totalpower;		//移动设备i的总能耗
 		
 		double fmax = 0; 	//最大频率
@@ -1433,7 +1333,6 @@ public class WK {
 		double staticPower = 0;		//静态功率
 		
 		double recvPower;		//接收功率
-		
 		
 		ArrayList<Double> cpuPowerList;		//不同频率的集合
 		double maxCPUPower = 0;	//最大功率
