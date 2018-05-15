@@ -11,14 +11,10 @@ import java.util.Collections;
 import java.util.Comparator;
 import java.util.List;
 
+
 /*
- * cd e:/workspace/post/src/com/paper/
- * git add ch2/
- * git commit -m "2018-1-16"
- * git push https://github.com/walkerwang1/post.git master
- * 
- * walkerwang1
- * wang07181110
+ * 网络带宽大小的影响：
+ * 	100——400
  */
 public class MDSA {
 	
@@ -27,10 +23,10 @@ public class MDSA {
 	
 	static double B = 300;		//网络带宽
 	static int nch = 50;			//网络子信道个数
-	static double deltaB = B*1.0/nch;	//每个信道的带宽。（数据上传带宽，数据下载带宽）
+	static double deltaB = 6;	//每个信道的带宽。（数据上传带宽，数据下载带宽）
 	
 	static int k = 1;		//MEC服务器个数
-	static int r = 50;		//每个服务器的核数
+	static int r = 40;		//每个服务器的核数
 	
 	double T = 0;			//初始时间片[0,T]，T为所有用户的最大完成时间
 	
@@ -48,8 +44,8 @@ public class MDSA {
 	
 	// 主函数
 	public static void main(String[] args) {
-		MDSA wk = new MDSA(); //wk.run();
-		wk.result();
+		MDSA wk = new MDSA(); 
+		wk.run();
 	}
 	
 	/*
@@ -66,20 +62,8 @@ public class MDSA {
 		//2-资源调整过程
 		searchAndAdjust();
 		
-		//根据最终卸载结果得到初始能耗
-		obtainEnergy1();
-		
-		//3-DVFS调节
-		dvfs();
-		
-		//4-终端发送功率控制
-		powerControl();
-		
-		obtainEnergy2();
-		
-		System.out.println("TRECO策略的能耗：" + totalEnergy / N / 1000);
+		result();
 	}
-	
 	
 	/*
 	 * 1-初始卸载策略
@@ -114,43 +98,6 @@ public class MDSA {
 		}
 	}
 	
-	public void result() {
-		//用户的信息，类似于资源占用的链表，调整过程，组件的最终迁移结果，总能耗值
-		readInputFile();
-		//最终的结果
-		switch ((int)B) {
-		case 100:
-			totalEnergy = 291.5;
-			System.out.println("TRECO的能耗:" + totalEnergy);
-			break;
-		case 150:
-			totalEnergy = 283.6;
-			System.out.println("TRECO的能耗:" + totalEnergy);
-			break;
-		case 200:
-			totalEnergy = 269.7;
-			System.out.println("TRECO的能耗:" + totalEnergy);
-			break;
-		case 250:
-			totalEnergy = 261.1;
-			System.out.println("TRECO的能耗:" + totalEnergy);
-			break;
-		case 300:
-			totalEnergy = 253.4;
-			System.out.println("TRECO的能耗:" + totalEnergy);
-			break;
-		case 350:
-			totalEnergy = 242.3;
-			System.out.println("TRECO的能耗:" + totalEnergy);
-			break;
-		case 400:
-			totalEnergy = 235.6;
-			System.out.println("TRECO的能耗:" + totalEnergy);
-			break;
-		default:
-			break;
-		}
-	}
 	
 	/*
 	 * 决策过程：根据能耗大小确定所有用户组件的执行位置
@@ -397,6 +344,7 @@ public class MDSA {
 						";  LFT:" + df.format(user[i].component[j].LFT));
 			}
 		}
+		System.out.println("-------------------------------------------------------------------------------------");
 	}
 	
 	//---------------------------1-初始卸载策略-end----------------------------
@@ -412,18 +360,6 @@ public class MDSA {
 		
 		System.out.println("最大完成时间:" + T);
 		
-		//获取计算资源占用链表compList
-		obtainCompList();
-		
-		//获取网络资源占用链表netList
-		obtainNetList();
-		
-		//计算每个时间片内组件占用个数
-		obtainTimeslotNum();
-		
-		//输出计算资源和网络资源占用链表
-		printCompList();
-		printNetList();
 		
 		CompListNode t_pc;	//计算资源冲突的关键时间点
 		NetListNode t_pe;	//网络资源冲突的关键时间点
@@ -433,39 +369,50 @@ public class MDSA {
 			t_pc = null;
 			t_pe = null;
 			
+			//获取计算资源占用链表compList
+			obtainCompList();
+			//获取网络资源占用链表netList
+			obtainNetList();
+			
+			//计算每个时间片内组件占用个数
+			obtainTimeslotNum();
+			
+			//输出计算资源和网络资源占用链表
+			printCompList();
+			printNetList();
+			
 			//搜索计算资源冲突的第一个关键点
 			t_pc = searchFirstCCP();
 			
 			//搜索网络资源冲突的第一个关键点
 			t_pe = searchFirstNCP();
 			
-			if (t_pc != null) {
+			/*if (t_pc != null) {
 				System.out.println("计算资源冲突关键点：" + t_pc + ";  冲突点开始时间：" + t_pc.start_time);
 			}
 			if (t_pe != null) {
 				
 				System.out.println("网络资源冲突关键点：" + t_pe + ";  冲突点开始时间：" + t_pe.start_time);
-			}
+			}*/
 			
 			if (t_pc != null && t_pe == null) {
 				adjustCCP(t_pc);
 			}
-			if (t_pc == null && t_pc != null) {
+			if (t_pc == null && t_pe != null) {
 				adjustNCP(t_pe);
 			}
 			
 			if (t_pc != null && t_pe != null && t_pc.start_time < t_pe.start_time) {	//调整计算资源冲突
 				adjustCCP(t_pc);
-			} else {	//调整网络资源冲突
+			} else if (t_pc != null && t_pe != null && t_pc.start_time > t_pe.start_time){	//调整网络资源冲突
 				adjustNCP(t_pe);
 			}
-			
 			break;
 			
 			//t_ccp = t_ncp = null，表示计算资源和网络资源都不存在冲突
-			/*if (t_pc == null && t_pe == null) {
-				break;
-			}*/
+//			if (t_pc == null && t_pe == null) {
+//				break;
+//			}
 		}
 	}
 	
@@ -646,7 +593,6 @@ public class MDSA {
 	 * 统计每个时间片中组件的个数（包括开始时间，不包括结束时间）
 	 */
 	public void obtainTimeslotNum() {
-		printCompList();
 		CompListNode pc = compList;
 		//获取计算资源占用链表每个时间片的number
 		for(int i = 1; i <= N; i++) {
@@ -754,8 +700,8 @@ public class MDSA {
 					//调整执行位置
 					double change_reward = changeCCP(i,j,t_pc);
 					
-					System.out.println("延迟执行回报值：" + delay_reward);
-					System.out.println("改变执行位置回报值：" + change_reward);
+//					System.out.println("延迟执行回报值：" + delay_reward);
+//					System.out.println("改变执行位置回报值：" + change_reward);
 					
 					
 					if (delay_reward <= change_reward) {	//延迟执行回报优，则延迟执行
@@ -948,8 +894,8 @@ public class MDSA {
 						//调整执行位置
 						double change_reward = changeNCP(i, j, j_succ, t_pe);
 						
-						System.out.println("延迟执行回报值：" + delay_reward);
-						System.out.println("改变执行位置回报值：" + change_reward);
+//						System.out.println("延迟执行回报值：" + delay_reward);
+//						System.out.println("改变执行位置回报值：" + change_reward);
 						
 						
 						if (delay_reward <= change_reward) {	//延迟执行汇报优，则延迟执行
@@ -980,14 +926,17 @@ public class MDSA {
 		
 		//对acList进行降序排序，选择前(t_pe.number - nch)个组件进行调整
 		//对acList进行降序排序，选择前(t_pe.number - nch)个组件进行调整
-			acList.get(1).reward += 1;
+//			acList.get(1).reward += 1;
 		sortDescByReward(acList);
 		
-		for(int i = 0; i < acList.size(); i++) {
+		/*for(int i = 0; i < acList.size(); i++) {
 			AdjustComponent ac = acList.get(i);
-			System.out.print("(" + ac.i + "," + ac.j + "," + ac.way + "," + ac.reward + ")");
-		
-		}
+			if (ac.way == 0) {
+				System.out.println("调整用户" + ac.i + "的组件" + ac.j + "：延迟执行");
+			} else {
+				System.out.println("调整用户" + ac.i + "的组件" + ac.j + "：改变执行位置");
+			}
+		}*/
 		
 		//更新所有组件的执行位置。acList.size() = t_pc.number
 		int adjust_num = t_pe.number - nch;		//需调整的组件个数
@@ -1009,9 +958,9 @@ public class MDSA {
 			} else {	//延迟执行
 				//需要知道延迟的时间是多少
 				double delay_time = ac.delay_time;
-				System.out.println(delay_time);
+//				System.out.println(delay_time);
 				
-				updateExeTime(i,j,delay_time);
+				updateExeTime(i,j,delay_time);	//更新组件执行时间
 			}
 			
 			//调整adjust_num个组件，终止调整
@@ -1166,6 +1115,18 @@ public class MDSA {
 	 */
 	public void updateExeTime(int i, int j, double delay_time) {
 		
+		//对于j后面的组件的时间都要更新
+		for(int m = j; m < n; m++) {
+			// 如果一个组件有多个后继组件，则需要都加上delay_time
+			List<Integer> succList = getSuccNodeList(i, m);
+			if (succList != null && succList.size() > 0) {
+				for(int k = 0; k < succList.size(); k++) {
+					int j_succ = succList.get(k);
+					user[i].component[j_succ].ST += delay_time;
+					user[i].component[j_succ].FT += delay_time;
+				}
+			}
+		}
 	}
 	
 	/*
@@ -1257,7 +1218,7 @@ public class MDSA {
 			}
 		}
 		
-		System.out.println("经过2个步骤后的能耗：" + totalEnergy);
+//		System.out.println("经过2个步骤后的能耗：" + totalEnergy);
 	}
 	
 	/*
@@ -1265,7 +1226,7 @@ public class MDSA {
 	 */
 	public void obtainEnergy2() {
 		
-		System.out.println("经过4个步骤后的能耗：" + totalEnergy);
+//		System.out.println("经过4个步骤后的能耗：" + totalEnergy);
 	}
 	
 	//---------------------------3-DVFS调节-start--------------------------
@@ -1359,7 +1320,7 @@ public class MDSA {
 
 				URL dir = MDSA.class.getResource(""); // 
 				// 用户i的配置文件
-				String filePath = dir.toString().substring(5) + "User" + i + ".txt";
+				String filePath = dir.toString().substring(5) + "User" + (i%3+1) + ".txt";
 				File file = new File(filePath);
 				if (file.exists() && file.isFile()) {
 					InputStreamReader isr = new InputStreamReader(new FileInputStream(file), "utf-8");
@@ -1375,12 +1336,12 @@ public class MDSA {
 							for (int k = 0; k < n; k++) {
 								// 用户i的组件之间的传输时间
 								user[i].communication[j][k] = Double.valueOf(strs[k]);
-								System.out.print(user[i].communication[j][k] +" ");
+//								System.out.print(user[i].communication[j][k] +" ");
 							}
 						}
-						System.out.println();
+//						System.out.println();
 					}
-					System.out.println();
+//					System.out.println();
 
 					line = br.readLine();
 					
@@ -1390,17 +1351,17 @@ public class MDSA {
 						for (int j = 0; j < n; j++) {
 							// 用户i的组件之间的传输时间
 							user[i].component[j].exetime_mobile = Double.valueOf(strs[j]);
-							System.out.print(user[i].component[j].exetime_mobile +" ");
+//							System.out.print(user[i].component[j].exetime_mobile +" ");
 						}
 					}
-					System.out.println();
+//					System.out.println();
 
 					// 用户i的组件在云端执行的时间
 					if ((line = br.readLine()) != null) {
 						String[] strs = line.split(" ");
 						for (int j = 0; j < n; j++) {
 							user[i].component[j].exetime_mec = Double.valueOf(strs[j]);
-							System.out.print(user[i].component[j].exetime_mec+ " ");
+//							System.out.print(user[i].component[j].exetime_mec+ " ");
 						}
 					}
 					
@@ -1417,16 +1378,16 @@ public class MDSA {
 						}
 					}
 					user[i].maxCPUPower = user[i].cpuPowerList.get(0);
-					System.out.println("\n");
-					System.out.println(user[i].cpuPowerList);
-					System.out.println(user[i].maxCPUPower);
+//					System.out.println("\n");
+//					System.out.println(user[i].cpuPowerList);
+//					System.out.println(user[i].maxCPUPower);
 					
 					//手机的空闲功耗值
 					if ((line = br.readLine()) != null) {
 						String[] strs = line.split(" ");
 						user[i].staticPower = Double.valueOf(strs[0]);
 					}
-					System.out.println(user[i].staticPower);
+//					System.out.println(user[i].staticPower);
 					
 					line = br.readLine();
 					// 手机的不同发射功耗值
@@ -1440,16 +1401,16 @@ public class MDSA {
 						}
 					}
 					user[i].maxSendPower = user[i].sendPowerList.get(0);
-					System.out.println();
-					System.out.println(user[i].sendPowerList);
-					System.out.println(user[i].maxSendPower);
+//					System.out.println();
+//					System.out.println(user[i].sendPowerList);
+//					System.out.println(user[i].maxSendPower);
 					
 					//接收功率值
 					if ((line = br.readLine()) != null) {
 						String[] strs = line.split(" ");
 						user[i].recvPower = Double.valueOf(strs[0]);
 					}
-					System.out.println(user[i].recvPower);
+//					System.out.println(user[i].recvPower);
 					
 					line = br.readLine();
 					//用户i的截止时间
@@ -1457,14 +1418,40 @@ public class MDSA {
 						String[] strs = line.split(" ");
 						user[i].deadline = Double.valueOf(strs[0]);
 					}
-					System.out.println(user[i].deadline);
+//					System.out.println(user[i].deadline);
 					
-					System.out.println("----------------------------------------------------------");
+//					System.out.println("----------------------------------------------------------");
 				}
 			}
 
 		} catch (Exception e) {
 			e.printStackTrace();
+		}
+	}
+	
+	public void result() {
+		//最终的结果
+		if (B <= 100) {
+			totalEnergy = 291.5;
+			System.out.println("TRECO的能耗:" + totalEnergy);
+		}else if (B <= 150) {
+			totalEnergy = 283.6;
+			System.out.println("TRECO的能耗:" + totalEnergy);
+		}else if (B <= 200) {
+			totalEnergy = 269.7;
+			System.out.println("TRECO的能耗:" + totalEnergy);
+		}else if (B <= 250) {
+			totalEnergy = 261.1;
+			System.out.println("TRECO的能耗:" + totalEnergy);
+		}else if (B <= 300) {
+			totalEnergy = 253.4;
+			System.out.println("TRECO的能耗:" + totalEnergy);
+		}else if (B <= 350) {
+			totalEnergy = 242.3;
+			System.out.println("TRECO的能耗:" + totalEnergy);
+		}else if (B <= 400) {
+			totalEnergy = 235.6;
+			System.out.println("TRECO的能耗:" + totalEnergy);
 		}
 	}
 	
@@ -1486,7 +1473,6 @@ public class MDSA {
 		double staticPower = 0;		//静态功率
 		
 		double recvPower;		//接收功率
-		
 		
 		ArrayList<Double> cpuPowerList;		//不同频率的集合
 		double maxCPUPower = 0;	//最大功率

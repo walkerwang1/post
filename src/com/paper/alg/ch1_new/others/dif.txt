@@ -1,4 +1,0 @@
-1-WKCRO(使用排队论处理，迁移策略改变)
-2-Mobile
-3-SearchAdjust
-4-NoQueue(不改变迁移策略，对于云端执行的直接等待)

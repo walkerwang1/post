@@ -11,15 +11,6 @@ import java.util.Collections;
 import java.util.Comparator;
 import java.util.List;
 
-/*
- * cd e:/workspace/post/src/com/paper/
- * git add ch2/
- * git commit -m "2018-1-16"
- * git push https://github.com/walkerwang1/post.git master
- * 
- * walkerwang1
- * wang07181110
- */
 public class Local {
 	
 	static int N = 200;		//用户个数

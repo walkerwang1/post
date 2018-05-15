@@ -15,7 +15,7 @@ import java.util.Random;
 import java.util.Set;
 
 /*
- * 实验：终端可用电量的影响
+ * 实验：终端可用电量的影响（时间和能耗的权重影响）
  */
 public class WKCRO {
 
